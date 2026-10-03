@@ -529,3 +529,50 @@ export interface Achievement {
   icon: string;
   unlockedAt?: string;
 }
+
+export interface SyllabusTopicItem {
+  id: string;
+  title: string;
+  completed: boolean;
+  difficulty?: 'Easy' | 'Medium' | 'Hard';
+  estimatedHours?: number;
+}
+
+export interface SyllabusUnit {
+  id: string;
+  unitNumber: number;
+  title: string;
+  topics: SyllabusTopicItem[];
+}
+
+export interface StudyPlanDay {
+  dayNumber: number;
+  date: string;
+  topics: string[];
+  durationMinutes: number;
+  mode: 'LEARN' | 'PRACTICE' | 'REVISE' | 'MOCK_TEST';
+  isCompleted?: boolean;
+}
+
+export interface ActiveRecallQuestion {
+  id: string;
+  topic: string;
+  type: 'MCQ' | 'VIVA' | 'DERIVATION';
+  question: string;
+  options?: string[];
+  correctAnswer: string | number;
+  explanation: string;
+}
+
+export interface TeachMeTopic {
+  topic: string;
+  prerequisite: string;
+  intuition: string;
+  formalExplanation: string;
+  workedExample: string;
+  commonMistakes: string;
+  quiz: {
+    question: string;
+    answer: string;
+  };
+}

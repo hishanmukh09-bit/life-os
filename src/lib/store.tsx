@@ -139,7 +139,7 @@ interface LifeOSContextType {
   createSpace: (spaceName: string) => void;
   // Task Actions
   addTask: (task: Omit<TaskItem, 'id' | 'spaceId' | 'creatorId' | 'createdAt' | 'updatedAt'>) => void;
-  toggleTask: (taskId: string, proofImg?: string) => void;
+  toggleTask: (taskId: string, proofImg?: string) => { success: boolean; error?: string };
   deleteTask: (taskId: string) => void;
   restoreTask: (taskId: string) => void;
   deleteTaskProof: (taskId: string) => void;
@@ -390,7 +390,17 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     setTasks(prev => [newTask, ...prev]);
   };
 
-  const toggleTask = (taskId: string, proofImg?: string) => {
+  const toggleTask = (taskId: string, proofImg?: string): { success: boolean; error?: string } => {
+    const target = tasks.find(t => t.id === taskId);
+    if (!target) return { success: false, error: 'TASK_NOT_FOUND' };
+
+    const isCompleting = target.status !== 'COMPLETED';
+    // Part 14: IF proofRequired == true AND no proof exists/provided THEN reject completion with PROOF_REQUIRED
+    if (isCompleting && target.proofRequired && !proofImg && !target.proof) {
+      console.warn(`[Task Proof Policy] Rejected completion for "${target.title}": PROOF_REQUIRED.`);
+      return { success: false, error: 'PROOF_REQUIRED' };
+    }
+
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
         const isDone = t.status === 'COMPLETED';
@@ -415,6 +425,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       }
       return t;
     }));
+
+    return { success: true };
   };
 
   // Soft delete task to trash for recovery

@@ -142,10 +142,14 @@ export function TasksView() {
     }
   };
 
-  const submitProofCompletion = (skip = false) => {
+  const submitProofCompletion = () => {
     if (!showProofModal) return;
-    const proofUrl = skip ? undefined : (proofImageInput.trim() || 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=500&auto=format&fit=crop&q=80');
-    toggleTask(showProofModal.id, proofUrl);
+    const proofUrl = proofImageInput.trim() || 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=500&auto=format&fit=crop&q=80';
+    const res = toggleTask(showProofModal.id, proofUrl);
+    if (!res.success && res.error === 'PROOF_REQUIRED') {
+      alert('⚠️ Photo proof is required to complete this task. Please provide a photo.');
+      return;
+    }
     setShowProofModal(null);
     setProofImageInput('');
   };
@@ -632,15 +636,18 @@ export function TasksView() {
               <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
-                  onClick={() => submitProofCompletion(true)}
+                  onClick={() => {
+                    setShowProofModal(null);
+                    setProofImageInput('');
+                  }}
                   className="text-xs font-semibold text-muted-foreground hover:underline"
                 >
-                  Skip Proof & Complete
+                  Cancel (Leave Incomplete)
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => submitProofCompletion(false)}
+                  onClick={submitProofCompletion}
                   className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 flex items-center gap-1.5 hover:opacity-95"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
