@@ -86,9 +86,9 @@ export function FinanceTravelView() {
   };
 
   // Balance calculation
-  const totalPaidByAlex = sharedExpenses.filter(e => !e.isSettled && e.paidByUserId === 'user_alex').reduce((a, b) => a + b.amount, 0);
-  const totalPaidByMaya = sharedExpenses.filter(e => !e.isSettled && e.paidByUserId === 'user_maya').reduce((a, b) => a + b.amount, 0);
-  const diff = (totalPaidByAlex - totalPaidByMaya) / 2;
+  const totalPaidByShanmukh = sharedExpenses.filter(e => !e.isSettled && e.paidByUserId === 'user_shanmukh').reduce((a, b) => a + b.amount, 0);
+  const totalPaidBySatvika = sharedExpenses.filter(e => !e.isSettled && e.paidByUserId === 'user_satvika').reduce((a, b) => a + b.amount, 0);
+  const diff = (totalPaidByShanmukh - totalPaidBySatvika) / 2;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
@@ -155,13 +155,13 @@ export function FinanceTravelView() {
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Shared 50/50 Balance</span>
               <h2 className="text-xl font-bold text-foreground mt-1">
                 {diff > 0
-                  ? `Maya owes Alex $${diff.toFixed(2)}`
+                  ? `Satvika owes Shanmukh $${diff.toFixed(2)}`
                   : diff < 0
-                  ? `Alex owes Maya $${Math.abs(diff).toFixed(2)}`
+                  ? `Shanmukh owes Satvika $${Math.abs(diff).toFixed(2)}`
                   : 'All shared expenses are settled! 🎉'}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Total active shared spend: ${(totalPaidByAlex + totalPaidByMaya).toFixed(2)}
+                Total active shared spend: ${(totalPaidByShanmukh + totalPaidBySatvika).toFixed(2)}
               </p>
             </div>
           </div>

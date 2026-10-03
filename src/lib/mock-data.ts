@@ -1,59 +1,58 @@
-import {
-  Space,
-  UserProfile,
-  TaskItem,
-  Habit,
-  DailyCheckin,
-  WaterLog,
-  SleepLog,
-  MealItem,
-  WorkoutLog,
-  CycleLog,
-  StudySubject,
-  Exam,
-  StudySession,
-  Goal,
-  Encouragement,
-  HelpRequest,
-  JournalEntry,
-  MemoryItem,
-  LittleThing,
-  EventItem,
-  ShoppingItem,
-  LifeAdminItem,
-  KnowledgeItem,
+import { 
+  UserProfile, 
+  Space, 
+  TaskItem, 
+  Habit, 
+  DailyCheckin, 
+  WaterLog, 
+  SleepLog, 
+  MealItem, 
+  WorkoutLog, 
+  CycleLog, 
+  StudySubject, 
+  Exam, 
+  StudySession, 
+  Goal, 
+  JournalEntry, 
+  MemoryItem, 
+  LittleThing, 
+  EventItem, 
+  ShoppingItem, 
+  LifeAdminItem, 
+  KnowledgeItem, 
   Achievement,
-  ProjectItem,
   ClassScheduleItem,
+  ProjectItem,
   SharedExpense,
   TripItem,
   SubscriptionItem,
   DocumentItem,
   SkillItem,
   ReadingBook,
-  PersonalChallenge
+  PersonalChallenge,
+  Encouragement
 } from '@/types';
 
 export const DEMO_SPACE: Space = {
   id: 'space_lifeos_demo',
   name: 'Our Haven',
   inviteCode: 'GROW02',
-  ownerId: 'user_alex',
+  ownerId: 'user_shanmukh',
   createdAt: '2026-09-01T08:00:00Z',
   members: [
     {
-      userId: 'user_alex',
-      name: 'Alex Chen',
-      email: 'alex@lifeos.local',
+      userId: 'user_shanmukh',
+      name: 'Shanmukh',
+      email: 'shanmukh@lifeos.local',
       role: 'OWNER',
       joinedAt: '2026-09-01T08:00:00Z',
       accentColor: 'indigo',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
     },
     {
-      userId: 'user_maya',
-      name: 'Maya Patel',
-      email: 'maya@lifeos.local',
+      userId: 'user_satvika',
+      name: 'Satvika',
+      email: 'satvika@lifeos.local',
       role: 'PARTNER',
       joinedAt: '2026-09-02T10:15:00Z',
       accentColor: 'rose',
@@ -63,10 +62,10 @@ export const DEMO_SPACE: Space = {
 };
 
 export const DEMO_PROFILES: Record<string, UserProfile> = {
-  user_alex: {
-    id: 'user_alex',
-    name: 'Alex Chen',
-    email: 'alex@lifeos.local',
+  user_shanmukh: {
+    id: 'user_shanmukh',
+    name: 'Shanmukh',
+    email: 'shanmukh@lifeos.local',
     accentColor: 'indigo',
     theme: 'system',
     age: 23,
@@ -87,10 +86,10 @@ export const DEMO_PROFILES: Record<string, UserProfile> = {
     dailyStudyTargetHours: 4,
     preferredPlanningStyle: 'Time-blocked focus blocks'
   },
-  user_maya: {
-    id: 'user_maya',
-    name: 'Maya Patel',
-    email: 'maya@lifeos.local',
+  user_satvika: {
+    id: 'user_satvika',
+    name: 'Satvika',
+    email: 'satvika@lifeos.local',
     accentColor: 'rose',
     theme: 'dark',
     age: 23,
@@ -117,8 +116,8 @@ export const INITIAL_TASKS: TaskItem[] = [
   {
     id: 'task_1',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_alex',
-    assignedToId: 'user_alex',
+    creatorId: 'user_shanmukh',
+    assignedToId: 'user_shanmukh',
     title: 'Solve Euler-Lagrange equations for 2-DOF robotic manipulator',
     description: 'Derive inertia matrix and Coriolis vectors for homework submission #4',
     category: 'Study',
@@ -141,8 +140,8 @@ export const INITIAL_TASKS: TaskItem[] = [
   {
     id: 'task_2',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_alex',
-    assignedToId: 'user_alex',
+    creatorId: 'user_shanmukh',
+    assignedToId: 'user_shanmukh',
     title: 'Upper Body Dumbbell Hypertrophy workout',
     description: 'Bench press, dumbbell rows, overhead press, bicep curls',
     category: 'Fitness',
@@ -158,9 +157,17 @@ export const INITIAL_TASKS: TaskItem[] = [
       id: 'proof_wo',
       taskId: 'task_2',
       imageUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500&auto=format&fit=crop&q=80',
-      uploadedBy: 'Alex',
+      uploadedBy: 'Shanmukh',
       timestamp: new Date(Date.now() - 3600000 * 3).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      visibility: 'SHARED'
+      visibility: 'SHARED',
+      aiVerification: {
+        verified: true,
+        confidence: 98.4,
+        detectedObjects: ['Gym dumbbells', 'Incline workout bench', 'Heart-rate monitor', 'Hydration shaker'],
+        summary: 'Verified gym workout: Dumbbell hypertrophy set matched planned exercises.',
+        verifiedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+        verificationHash: '0x8f2a...c31b'
+      }
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -168,8 +175,8 @@ export const INITIAL_TASKS: TaskItem[] = [
   {
     id: 'task_3',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_maya',
-    assignedToId: 'user_maya',
+    creatorId: 'user_satvika',
+    assignedToId: 'user_satvika',
     title: 'Finalize UX wireframes for Bio-Genomics dashboard',
     description: 'Present high-fidelity components to research advisor',
     category: 'Work',
@@ -181,14 +188,30 @@ export const INITIAL_TASKS: TaskItem[] = [
     recurrence: 'NONE',
     estimatedMinutes: 90,
     completedAt: new Date(Date.now() - 3600000 * 1).toISOString(),
+    proof: {
+      id: 'proof_wireframes',
+      taskId: 'task_3',
+      imageUrl: 'https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=500&auto=format&fit=crop&q=80',
+      uploadedBy: 'Satvika',
+      timestamp: new Date(Date.now() - 3600000 * 1).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      visibility: 'SHARED',
+      aiVerification: {
+        verified: true,
+        confidence: 97.2,
+        detectedObjects: ['Figma canvas', 'Component tokens', 'Genomics sequence mockups', 'Dual monitor setup'],
+        summary: 'Verified high-fidelity wireframe completion: All 4 dashboard views finalized and ready for advisor review.',
+        verifiedAt: new Date(Date.now() - 3600000 * 1).toISOString(),
+        verificationHash: '0x3c7e...b94d'
+      }
+    },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
   {
     id: 'task_4',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_alex',
-    assignedToId: 'user_alex',
+    creatorId: 'user_shanmukh',
+    assignedToId: 'user_shanmukh',
     title: 'Hydration Target: 2.8 Liters',
     category: 'Health',
     priority: 'NORMAL',
@@ -203,8 +226,8 @@ export const INITIAL_TASKS: TaskItem[] = [
   {
     id: 'task_5',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_maya',
-    assignedToId: 'user_alex',
+    creatorId: 'user_satvika',
+    assignedToId: 'user_shanmukh',
     title: 'Pick up organic oat milk and fresh blueberries',
     category: 'Household',
     priority: 'NORMAL',
@@ -220,8 +243,8 @@ export const INITIAL_TASKS: TaskItem[] = [
   {
     id: 'task_6',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_alex',
-    assignedToId: 'user_alex',
+    creatorId: 'user_shanmukh',
+    assignedToId: 'user_shanmukh',
     title: 'Review Kalman filter state estimator notes',
     category: 'Study',
     priority: 'NORMAL',
@@ -231,7 +254,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     dueTime: '21:00',
     recurrence: 'NONE',
     estimatedMinutes: 35,
-    dependsOnTaskId: 'task_1', // Dependency!
+    dependsOnTaskId: 'task_1',
     isBlocked: true,
     blockerReason: 'Requires completion of Euler-Lagrange equations first',
     createdAt: new Date().toISOString(),
@@ -243,7 +266,7 @@ export const INITIAL_PROJECTS: ProjectItem[] = [
   {
     id: 'proj_robotics_arm',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Autonomous Robotic Arm & Vision Sorting',
     description: '3-DOF manipulator with RealSense depth camera tracking and pick-and-place inverse dynamics.',
     deadline: '2026-11-20',
@@ -328,8 +351,8 @@ export const INITIAL_SHARED_EXPENSES: SharedExpense[] = [
     title: 'Weekly Organic Grocery Restock',
     amount: 84.50,
     category: 'Food',
-    paidByUserId: 'user_maya',
-    paidByName: 'Maya',
+    paidByUserId: 'user_satvika',
+    paidByName: 'Satvika',
     splitPercentage: 50,
     isSettled: false,
     date: '2026-10-02'
@@ -340,8 +363,8 @@ export const INITIAL_SHARED_EXPENSES: SharedExpense[] = [
     title: 'Robotics Lab Microcontroller & Sensor Shield',
     amount: 62.00,
     category: 'Projects',
-    paidByUserId: 'user_alex',
-    paidByName: 'Alex',
+    paidByUserId: 'user_shanmukh',
+    paidByName: 'Shanmukh',
     splitPercentage: 50,
     isSettled: false,
     date: '2026-10-01'
@@ -372,7 +395,7 @@ export const INITIAL_TRIPS: TripItem[] = [
 export const INITIAL_SUBSCRIPTIONS: SubscriptionItem[] = [
   {
     id: 'sub_ieee',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     name: 'IEEE Robotics & Automation Student Society',
     cost: 16.00,
     billingCycle: 'Monthly',
@@ -382,7 +405,7 @@ export const INITIAL_SUBSCRIPTIONS: SubscriptionItem[] = [
   },
   {
     id: 'sub_copilot',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     name: 'GitHub Copilot Pro',
     cost: 10.00,
     billingCycle: 'Monthly',
@@ -395,86 +418,178 @@ export const INITIAL_SUBSCRIPTIONS: SubscriptionItem[] = [
 export const INITIAL_DOCUMENTS: DocumentItem[] = [
   {
     id: 'doc_passport',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'International Passport',
     documentType: 'Passport',
-    expiryDate: '2029-06-14',
-    notes: 'Valid for next 3 years'
+    expiryDate: '2029-05-14',
+    notes: 'Kept in study desk locker'
   },
   {
-    id: 'doc_student_id',
-    userId: 'user_alex',
-    title: 'University Graduate Student ID',
+    id: 'doc_college_id',
+    userId: 'user_shanmukh',
+    title: 'Graduate Student ID Card',
     documentType: 'College ID',
-    expiryDate: '2027-05-30',
-    notes: 'Access to engineering robotics machine shop'
+    expiryDate: '2027-06-30'
   }
 ];
 
 export const INITIAL_SKILLS: SkillItem[] = [
   {
-    id: 'sk_ros',
-    userId: 'user_alex',
-    name: 'ROS 2 (Robot Operating System)',
+    id: 'sk_1',
+    userId: 'user_shanmukh',
+    name: 'ROS 2 & MoveIt Kinematics',
     category: 'Engineering',
     currentLevel: 'Intermediate',
-    targetLevel: 'Advanced Mastery',
-    practiceHours: 48,
-    resources: ['MoveIt 2 Tutorials', 'ROS 2 Navigation Nav2 Stack Documentation']
+    targetLevel: 'Advanced Expert',
+    practiceHours: 64,
+    resources: ['Official ROS 2 Humble Docs', 'Modern Robotics Lynch & Park']
   },
   {
-    id: 'sk_cad',
-    userId: 'user_alex',
-    name: 'Parametric CAD & Simulation',
-    category: 'Design',
-    currentLevel: 'Proficient',
-    targetLevel: 'Expert',
-    practiceHours: 35,
-    resources: ['SolidWorks CSWP Certification Guide', 'Autodesk Fusion Generative Design']
+    id: 'sk_2',
+    userId: 'user_shanmukh',
+    name: 'Deep Reinforcement Learning (PyTorch)',
+    category: 'AI & Math',
+    currentLevel: 'Beginner',
+    targetLevel: 'Applied Competence',
+    practiceHours: 28,
+    resources: ['OpenAI Spinning Up in Deep RL']
   }
 ];
 
-export const INITIAL_READING: ReadingBook[] = [
+export const INITIAL_READING_BOOKS: ReadingBook[] = [
   {
-    id: 'book_1',
-    userId: 'user_alex',
-    title: 'Modern Robotics: Mechanics, Planning, and Control',
-    author: 'Kevin M. Lynch & Frank C. Park',
-    totalPages: 544,
-    pagesRead: 320,
-    status: 'READING',
-    notes: 'Chapter 8 on Dynamics provides the cleanest derivation of Newton-Euler recursive algorithm.'
-  },
-  {
-    id: 'book_2',
-    userId: 'user_alex',
+    id: 'bk_1',
+    userId: 'user_shanmukh',
     title: 'Atomic Habits',
     author: 'James Clear',
     totalPages: 320,
-    pagesRead: 320,
+    pagesRead: 240,
+    status: 'READING',
+    notes: 'You do not rise to the level of your goals. You fall to the level of your systems.'
+  },
+  {
+    id: 'bk_2',
+    userId: 'user_shanmukh',
+    title: 'Deep Work: Rules for Focused Success',
+    author: 'Cal Newport',
+    totalPages: 296,
+    pagesRead: 296,
     status: 'COMPLETED',
-    notes: 'The concept of habit stacking and identity-based habits resonates deeply.'
+    notes: 'The ability to perform deep work is becoming increasingly rare at exactly the same time it is becoming increasingly valuable in our economy.'
   }
 ];
 
+export const INITIAL_READING = INITIAL_READING_BOOKS;
+
 export const INITIAL_CHALLENGES: PersonalChallenge[] = [
   {
-    id: 'ch_code',
-    userId: 'user_alex',
-    title: '30-Day Engineering Code & Derivation Streak',
+    id: 'ch_1',
+    userId: 'user_shanmukh',
+    title: '30-Day Morning Sunlight & 2.8L Water Streak',
     targetDays: 30,
     currentDay: 18,
     isShared: true,
-    category: 'Study'
+    category: 'Health'
   },
   {
-    id: 'ch_mobility',
-    userId: 'user_alex',
-    title: '14-Day Morning Joint Mobility Protocol',
+    id: 'ch_2',
+    userId: 'user_shanmukh',
+    title: '14-Day Consistent 45-Min Robotics Deep Work',
     targetDays: 14,
     currentDay: 9,
-    isShared: true,
-    category: 'Fitness'
+    isShared: false,
+    category: 'Study'
+  }
+];
+
+export const INITIAL_WATER_LOG: WaterLog = {
+  id: 'water_today',
+  userId: 'user_shanmukh',
+  date: new Date().toISOString().split('T')[0],
+  amountMl: 1750,
+  targetMl: 2800,
+  history: [
+    { time: '07:15', amount: 500 },
+    { time: '10:30', amount: 500 },
+    { time: '13:00', amount: 500 },
+    { time: '15:45', amount: 250 }
+  ]
+};
+
+export const INITIAL_SLEEP_LOG: SleepLog = {
+  id: 'sleep_today',
+  userId: 'user_shanmukh',
+  date: new Date().toISOString().split('T')[0],
+  bedtime: '23:10',
+  wakeTime: '06:45',
+  durationMinutes: 455, // 7h 35m
+  quality: 4,
+  notes: 'Fell asleep quickly. Woke up energized for morning workout.',
+  visibility: 'SHARED'
+};
+
+export const INITIAL_MEALS: MealItem[] = [
+  {
+    id: 'meal_1',
+    spaceId: 'space_lifeos_demo',
+    userId: 'user_shanmukh',
+    date: new Date().toISOString().split('T')[0],
+    mealType: 'Breakfast',
+    food: '3 scrambled eggs with spinach, sourdough avocado toast, black coffee',
+    portion: 'Generous morning fuel',
+    estimatedCalories: 520,
+    photoUrl: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&auto=format&fit=crop&q=80',
+    notes: 'High protein focus to sustain study through noon',
+    visibility: 'SHARED',
+    time: '08:15'
+  },
+  {
+    id: 'meal_2',
+    spaceId: 'space_lifeos_demo',
+    userId: 'user_shanmukh',
+    date: new Date().toISOString().split('T')[0],
+    mealType: 'Lunch',
+    food: 'Mediterranean spiced chicken grain bowl with hummus & greens',
+    portion: 'Medium bowl',
+    estimatedCalories: 680,
+    photoUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80',
+    visibility: 'SHARED',
+    time: '13:30'
+  }
+];
+
+export const INITIAL_WORKOUTS: WorkoutLog[] = [
+  {
+    id: 'wo_1',
+    spaceId: 'space_lifeos_demo',
+    userId: 'user_shanmukh',
+    date: new Date().toISOString().split('T')[0],
+    type: 'Strength',
+    durationMinutes: 45,
+    exercises: [
+      { name: 'Dumbbell Flat Bench Press', sets: 4, reps: 10, weightKg: 24 },
+      { name: 'Single-Arm Dumbbell Rows', sets: 4, reps: 12, weightKg: 22 },
+      { name: 'Seated Overhead Dumbbell Press', sets: 3, reps: 10, weightKg: 16 },
+      { name: 'Standing Incline Bicep Curls', sets: 3, reps: 12, weightKg: 12 }
+    ],
+    notes: 'RPE 8. Felt strong on bench press; solid upper body pump.',
+    photoUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500&auto=format&fit=crop&q=80',
+    visibility: 'SHARED'
+  }
+];
+
+export const INITIAL_CYCLE_LOGS: CycleLog[] = [
+  {
+    id: 'cycle_1',
+    userId: 'user_satvika',
+    periodStartDate: '2026-09-21',
+    cycleLengthDays: 28,
+    periodDurationDays: 5,
+    symptoms: ['Mild fatigue on Day 1', 'Gentle cramps'],
+    mood: 'Calm & introspective',
+    energyLevel: 6,
+    notes: 'Kept workouts light with restorative mobility and chamomile tea.',
+    visibility: 'PRIVATE'
   }
 ];
 
@@ -482,25 +597,25 @@ export const INITIAL_HABITS: Habit[] = [
   {
     id: 'habit_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
-    title: 'Drink 500ml water upon waking',
+    userId: 'user_shanmukh',
+    title: 'Daily 2.8L Water Intake',
     category: 'Health',
     visibility: 'SHARED',
-    currentStreak: 14,
-    bestStreak: 28,
+    currentStreak: 8,
+    bestStreak: 15,
     recoveryCount: 1,
     frequency: 'DAILY',
     logs: [
       { date: new Date().toISOString().split('T')[0], completed: true },
       { date: new Date(Date.now() - 86400000).toISOString().split('T')[0], completed: true },
-      { date: new Date(Date.now() - 172800000).toISOString().split('T')[0], completed: true }
+      { date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], completed: true }
     ],
     createdAt: '2026-09-01T08:00:00Z'
   },
   {
     id: 'habit_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Morning 45-min Deep Focus block',
     category: 'Study',
     visibility: 'SHARED',
@@ -517,7 +632,7 @@ export const INITIAL_HABITS: Habit[] = [
   {
     id: 'habit_3',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_maya',
+    userId: 'user_satvika',
     title: 'Evening 20-min mobility & stretch',
     category: 'Fitness',
     visibility: 'SHARED',
@@ -534,9 +649,9 @@ export const INITIAL_HABITS: Habit[] = [
 
 export const INITIAL_CHECKINS: DailyCheckin[] = [
   {
-    id: 'checkin_alex_today',
+    id: 'checkin_shanmukh_today',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     date: new Date().toISOString().split('T')[0],
     mood: 'Good',
     energy: 8,
@@ -548,9 +663,9 @@ export const INITIAL_CHECKINS: DailyCheckin[] = [
     createdAt: new Date().toISOString()
   },
   {
-    id: 'checkin_maya_today',
+    id: 'checkin_satvika_today',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_maya',
+    userId: 'user_satvika',
     date: new Date().toISOString().split('T')[0],
     mood: 'Great',
     energy: 9,
@@ -566,7 +681,7 @@ export const INITIAL_STUDY_SUBJECTS: StudySubject[] = [
   {
     id: 'subj_robotics',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     name: 'Robotics Dynamics & Kinematics',
     code: 'ROB-501',
     color: '#6366f1',
@@ -582,7 +697,7 @@ export const INITIAL_STUDY_SUBJECTS: StudySubject[] = [
   {
     id: 'subj_vision',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     name: 'Computer Vision & Deep Perception',
     code: 'CS-640',
     color: '#06b6d4',
@@ -600,7 +715,7 @@ export const INITIAL_EXAMS: Exam[] = [
   {
     id: 'exam_robotics_midterm',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     subjectId: 'subj_robotics',
     subjectName: 'Robotics Dynamics & Kinematics',
     date: new Date(Date.now() + 86400000 * 12).toISOString().split('T')[0],
@@ -612,7 +727,7 @@ export const INITIAL_EXAMS: Exam[] = [
   {
     id: 'exam_vision_quiz',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     subjectId: 'subj_vision',
     subjectName: 'Computer Vision & Deep Perception',
     date: new Date(Date.now() + 86400000 * 19).toISOString().split('T')[0],
@@ -626,7 +741,7 @@ export const INITIAL_GOALS: Goal[] = [
   {
     id: 'goal_us_1',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_alex',
+    creatorId: 'user_shanmukh',
     isShared: true,
     category: 'Relationship',
     title: '30-Day Combined Consistency Challenge',
@@ -642,9 +757,9 @@ export const INITIAL_GOALS: Goal[] = [
     ]
   },
   {
-    id: 'goal_alex_thesis',
+    id: 'goal_shanmukh_thesis',
     spaceId: 'space_lifeos_demo',
-    creatorId: 'user_alex',
+    creatorId: 'user_shanmukh',
     isShared: false,
     category: 'Academics',
     title: 'Submit Robotic Arm Simulation Paper to IROS',
@@ -664,7 +779,7 @@ export const INITIAL_MEMORIES: MemoryItem[] = [
   {
     id: 'mem_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Sunset hike at Mount Rainier Skyline Trail',
     date: '2026-08-24',
     category: 'Trip',
@@ -674,8 +789,8 @@ export const INITIAL_MEMORIES: MemoryItem[] = [
   {
     id: 'mem_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_maya',
-    title: 'Celebrating Alex passing thesis proposal defense',
+    userId: 'user_satvika',
+    title: 'Celebrating Shanmukh passing thesis proposal defense',
     date: '2026-09-10',
     category: 'Milestone',
     photoUrl: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=600&auto=format&fit=crop&q=80',
@@ -687,7 +802,7 @@ export const INITIAL_LITTLE_THINGS: LittleThing[] = [
   {
     id: 'lt_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     forPartner: true,
     category: 'Favorite Food',
     title: 'Oat Milk Chai with cardamom and less sugar',
@@ -696,7 +811,7 @@ export const INITIAL_LITTLE_THINGS: LittleThing[] = [
   {
     id: 'lt_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     forPartner: true,
     category: 'Gift Idea',
     title: 'Noise-cancelling wireless headphones (Sage Green)',
@@ -705,7 +820,7 @@ export const INITIAL_LITTLE_THINGS: LittleThing[] = [
   {
     id: 'lt_3',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_maya',
+    userId: 'user_satvika',
     forPartner: true,
     category: 'Surprise Idea',
     title: 'Weekend getaway cabin with fireplace',
@@ -717,31 +832,31 @@ export const INITIAL_SHOPPING: ShoppingItem[] = [
   {
     id: 'shop_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_maya',
+    userId: 'user_satvika',
     title: 'Organic cold-pressed olive oil',
     category: 'Pantry',
     completed: true,
-    addedByName: 'Maya',
+    addedByName: 'Satvika',
     createdAt: new Date().toISOString()
   },
   {
     id: 'shop_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_maya',
+    userId: 'user_satvika',
     title: 'Fresh blueberries & Greek yogurt',
     category: 'Breakfast',
     completed: false,
-    addedByName: 'Maya',
+    addedByName: 'Satvika',
     createdAt: new Date().toISOString()
   },
   {
     id: 'shop_3',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'AA rechargeable batteries for VR controllers',
     category: 'Hardware',
     completed: false,
-    addedByName: 'Alex',
+    addedByName: 'Shanmukh',
     createdAt: new Date().toISOString()
   }
 ];
@@ -750,7 +865,7 @@ export const INITIAL_LIFE_ADMIN: LifeAdminItem[] = [
   {
     id: 'la_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Apartment High-Speed Fiber Internet Bill',
     category: 'Bill',
     dueDate: '2026-10-15',
@@ -761,7 +876,7 @@ export const INITIAL_LIFE_ADMIN: LifeAdminItem[] = [
   {
     id: 'la_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Car Annual Registration & Emissions Inspection',
     category: 'Renewal',
     dueDate: '2026-10-28',
@@ -774,7 +889,7 @@ export const INITIAL_KNOWLEDGE: KnowledgeItem[] = [
   {
     id: 'kn_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Optimal Spaced Repetition Intervals for Engineering Math',
     category: 'Learning',
     tags: ['Learning', 'Productivity', 'Exams'],
@@ -783,7 +898,7 @@ export const INITIAL_KNOWLEDGE: KnowledgeItem[] = [
   {
     id: 'kn_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Hydration & Cognitive Endurance Protocol',
     category: 'Article',
     tags: ['Health', 'Focus'],
@@ -795,9 +910,9 @@ export const INITIAL_ENCOURAGEMENTS: Encouragement[] = [
   {
     id: 'enc_1',
     spaceId: 'space_lifeos_demo',
-    fromUserId: 'user_maya',
-    fromUserName: 'Maya',
-    toUserId: 'user_alex',
+    fromUserId: 'user_satvika',
+    fromUserName: 'Satvika',
+    toUserId: 'user_shanmukh',
     message: "You've got this! Remember to take a quick walk after your robotics derivations. Proud of your focus today.",
     emoji: '💪',
     timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
@@ -809,7 +924,7 @@ export const INITIAL_EVENTS: EventItem[] = [
   {
     id: 'ev_1',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Our 2-Year Anniversary Dinner',
     category: 'Anniversary',
     date: '2026-10-24',
@@ -820,7 +935,7 @@ export const INITIAL_EVENTS: EventItem[] = [
   {
     id: 'ev_2',
     spaceId: 'space_lifeos_demo',
-    userId: 'user_alex',
+    userId: 'user_shanmukh',
     title: 'Robotics Midterm Examination',
     category: 'Exam',
     date: new Date(Date.now() + 86400000 * 12).toISOString().split('T')[0],

@@ -30,7 +30,8 @@ import {
   Layers,
   HelpCircle,
   TrendingUp,
-  Smile
+  Smile,
+  X
 } from 'lucide-react';
 
 const LIFECYCLE_STEPS = [
@@ -54,6 +55,7 @@ export function HomeView() {
     habits,
     waterIntake,
     sleepLogs,
+    exams,
     workouts,
     specialMode,
     setSpecialMode,
@@ -73,6 +75,24 @@ export function HomeView() {
   const [encouragementSent, setEncouragementSent] = useState(false);
   const [nightModeOpen, setNightModeOpen] = useState(false);
   const [nightReflection, setNightReflection] = useState({ well: '', notWell: '', feeling: 'Accomplished and grounded' });
+  const [coachQuestion, setCoachQuestion] = useState('');
+  const [coachAnswer, setCoachAnswer] = useState<string | null>(null);
+
+  const handleAskCoach = (q: string) => {
+    const query = q || coachQuestion;
+    if (!query.trim()) return;
+    const ans = AIService.askAICoach(
+      currentUser.name.split(' ')[0],
+      partnerUser ? partnerUser.name.split(' ')[0] : 'Partner',
+      query,
+      tasks,
+      exams,
+      waterIntake,
+      latestSleep?.durationMinutes || 460
+    );
+    setCoachAnswer(ans);
+    setCoachQuestion('');
+  };
 
   // Today's accessible tasks
   const todayTasks = tasks.filter(t => t.creatorId === currentUser.id || t.visibility === 'SHARED');
@@ -333,6 +353,147 @@ export function HomeView() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 5B. GROUNDED AI COPILOT FOR SHANMUKH & SATVIKA */}
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">
+                LifeOS AI Copilot &bull; {currentUser.name.split(' ')[0]} &amp; {partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'}
+              </h2>
+              <span className="text-[11px] text-muted-foreground">
+                Grounded in your real stored tasks, exams, hydration, and partner updates.
+              </span>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 w-fit">
+            ✓ 100% Zero-Hallucination
+          </span>
+        </div>
+
+        {/* Quick Prompt Chips */}
+        <div className="flex flex-wrap gap-2 text-xs">
+          <button
+            onClick={() => handleAskCoach('What should I focus on next?')}
+            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+          >
+            ⚡ What should I focus on next?
+          </button>
+          <button
+            onClick={() => handleAskCoach('When is our next exam deadline?')}
+            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+          >
+            📅 Check exam deadlines
+          </button>
+          <button
+            onClick={() => handleAskCoach('How is our water and sleep?')}
+            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+          >
+            💧 Water &amp; sleep consistency
+          </button>
+          <button
+            onClick={() => handleAskCoach(`Check in on ${partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'}`)}
+            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+          >
+            ❤️ Partner status
+          </button>
+        </div>
+
+        {/* Interactive Query Input */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleAskCoach(coachQuestion);
+          }}
+          className="flex gap-2 text-xs"
+        >
+          <input
+            type="text"
+            placeholder="Ask AI Copilot anything about your day, deadlines, or partner updates..."
+            value={coachQuestion}
+            onChange={(e) => setCoachQuestion(e.target.value)}
+            className="flex-1 px-4 py-2.5 rounded-2xl border border-border bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
+          />
+          <button
+            type="submit"
+            className="px-5 py-2.5 rounded-2xl bg-primary text-primary-foreground font-bold shadow-xs hover:opacity-90 transition-all shrink-0 flex items-center gap-1.5"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Ask</span>
+          </button>
+        </form>
+
+        {/* AI Answer Box */}
+        {coachAnswer && (
+          <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between text-xs font-bold text-primary">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> AI Response
+              </span>
+              <button onClick={() => setCoachAnswer(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-foreground leading-relaxed font-medium">
+              {coachAnswer}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 5C. RECENT AI-VERIFIED PHOTO PROOFS */}
+      <div className="rounded-3xl border border-border bg-card p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Camera className="h-4 w-4 text-emerald-500" />
+            <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
+              Recent AI-Verified Photo Proofs
+            </h3>
+          </div>
+          <button
+            onClick={() => setActiveView('GALLERY')}
+            className="text-[11px] font-bold text-primary hover:underline"
+          >
+            Open Our Gallery &rarr;
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {tasks.filter(t => t.proof).slice(0, 3).map(task => (
+            <div
+              key={task.id}
+              onClick={() => openLightbox({
+                url: task.proof!.imageUrl,
+                title: task.title,
+                timestamp: task.proof!.timestamp,
+                taskId: task.id,
+                aiVerification: task.proof!.aiVerification
+              })}
+              className="p-3 rounded-2xl border border-border bg-background hover:border-primary/50 cursor-pointer transition-all flex items-center gap-3 group"
+            >
+              <img
+                src={task.proof!.imageUrl}
+                alt="Proof"
+                className="h-14 w-14 rounded-xl object-cover border border-emerald-500/40 shrink-0 group-hover:scale-105 transition-transform"
+              />
+              <div className="overflow-hidden space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">
+                    ✓ {task.proof!.aiVerification?.confidence ? `${task.proof!.aiVerification.confidence.toFixed(0)}% AI Match` : 'Verified'}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{task.proof!.uploadedBy}</span>
+                </div>
+                <h4 className="text-xs font-bold text-foreground truncate">{task.title}</h4>
+                <p className="text-[10px] text-muted-foreground truncate">{task.proof!.timestamp}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 6. Vital Progress Cards with Quick Break System */}

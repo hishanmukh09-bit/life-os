@@ -86,6 +86,14 @@ export interface TaskProof {
   uploadedBy: string;
   timestamp: string;
   visibility?: Visibility;
+  aiVerification?: {
+    verified: boolean;
+    confidence: number; // e.g. 96.8
+    detectedObjects: string[];
+    summary: string;
+    verifiedAt: string;
+    verificationHash?: string;
+  };
 }
 
 export interface TaskSubtask {

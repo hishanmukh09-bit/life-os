@@ -65,12 +65,21 @@ import {
   INITIAL_CHALLENGES
 } from './mock-data';
 import { generateId } from './utils';
+import { AIService } from './ai-service';
 
 export interface LightboxData {
   url: string;
   title?: string;
   timestamp?: string;
   taskId?: string;
+  aiVerification?: {
+    verified: boolean;
+    confidence: number;
+    detectedObjects: string[];
+    summary: string;
+    verifiedAt: string;
+    verificationHash?: string;
+  };
 }
 
 interface LifeOSContextType {
@@ -187,7 +196,7 @@ interface LifeOSContextType {
 const LifeOSContext = createContext<LifeOSContextType | undefined>(undefined);
 
 export function LifeOSProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<UserProfile>(DEMO_PROFILES.user_alex);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(DEMO_PROFILES.user_shanmukh);
   const [currentSpace, setCurrentSpace] = useState<Space>(DEMO_SPACE);
   const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
   const [trashTasks, setTrashTasks] = useState<TaskItem[]>([]);
@@ -229,7 +238,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([
     {
       id: 'sleep_1',
-      userId: 'user_alex',
+      userId: 'user_shanmukh',
       date: new Date().toISOString().split('T')[0],
       bedtime: '23:15',
       wakeTime: '06:50',
@@ -242,7 +251,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     {
       id: 'meal_1',
       spaceId: 'space_lifeos_demo',
-      userId: 'user_alex',
+      userId: 'user_shanmukh',
       date: new Date().toISOString().split('T')[0],
       mealType: 'Breakfast',
       food: '3 scrambled eggs with avocado and sourdough toast',
@@ -256,7 +265,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     {
       id: 'wo_1',
       spaceId: 'space_lifeos_demo',
-      userId: 'user_alex',
+      userId: 'user_shanmukh',
       date: new Date().toISOString().split('T')[0],
       type: 'Strength',
       durationMinutes: 45,
@@ -273,7 +282,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [cycleLogs, setCycleLogs] = useState<CycleLog[]>([
     {
       id: 'cycle_1',
-      userId: 'user_maya',
+      userId: 'user_satvika',
       periodStartDate: '2026-09-24',
       cycleLengthDays: 28,
       periodDurationDays: 5,
@@ -385,6 +394,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
         const isDone = t.status === 'COMPLETED';
+        const aiVerification = proofImg 
+          ? AIService.verifyPhotoProof(t.category, t.title, proofImg) 
+          : undefined;
+
         return {
           ...t,
           status: isDone ? 'TODO' : 'COMPLETED',
@@ -395,7 +408,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             imageUrl: proofImg,
             uploadedBy: currentUser.name.split(' ')[0],
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            visibility: t.visibility
+            visibility: t.visibility,
+            aiVerification
           } : t.proof
         };
       }
@@ -427,6 +441,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const replaceTaskProof = (taskId: string, newUrl: string) => {
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
+        const aiVerification = AIService.verifyPhotoProof(t.category, t.title, newUrl);
         return {
           ...t,
           proof: {
@@ -435,7 +450,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             imageUrl: newUrl,
             uploadedBy: currentUser.name.split(' ')[0],
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            visibility: t.visibility
+            visibility: t.visibility,
+            aiVerification
           }
         };
       }

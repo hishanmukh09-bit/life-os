@@ -93,29 +93,29 @@ export function Navbar() {
             </div>
           )}
 
-          {/* User Switcher (Alex / Maya Demo Switcher) */}
+          {/* User Switcher (Shanmukh / Satvika Demo Switcher) */}
           <div className="flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5">
             <button
-              onClick={() => switchUser('user_alex')}
+              onClick={() => switchUser('user_shanmukh')}
               className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
-                currentUser.id === 'user_alex'
+                currentUser.id === 'user_shanmukh'
                   ? 'bg-card text-foreground shadow-xs font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <UserCheck className="h-3 w-3" />
-              <span>Alex</span>
+              <span>Shanmukh</span>
             </button>
             <button
-              onClick={() => switchUser('user_maya')}
+              onClick={() => switchUser('user_satvika')}
               className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
-                currentUser.id === 'user_maya'
+                currentUser.id === 'user_satvika'
                   ? 'bg-card text-foreground shadow-xs font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <UserCheck className="h-3 w-3" />
-              <span>Maya</span>
+              <span>Satvika</span>
             </button>
           </div>
 
