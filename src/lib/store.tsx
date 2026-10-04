@@ -210,104 +210,51 @@ const LifeOSContext = createContext<LifeOSContextType | undefined>(undefined);
 export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserProfile>(DEMO_PROFILES.user_shanmukh);
   const [currentSpace, setCurrentSpace] = useState<Space>(DEMO_SPACE);
-  const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [trashTasks, setTrashTasks] = useState<TaskItem[]>([]);
-  const [habits, setHabits] = useState<Habit[]>(INITIAL_HABITS);
-  const [checkins, setCheckins] = useState<DailyCheckin[]>(INITIAL_CHECKINS);
-  const [studySubjects, setStudySubjects] = useState<StudySubject[]>(INITIAL_STUDY_SUBJECTS);
-  const [exams, setExams] = useState<Exam[]>(INITIAL_EXAMS);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [checkins, setCheckins] = useState<DailyCheckin[]>([]);
+  const [studySubjects, setStudySubjects] = useState<StudySubject[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [studySessions, setStudySessions] = useState<StudySession[]>([]);
-  const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
-  const [memories, setMemories] = useState<MemoryItem[]>(INITIAL_MEMORIES);
-  const [littleThings, setLittleThings] = useState<LittleThing[]>(INITIAL_LITTLE_THINGS);
-  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(INITIAL_SHOPPING);
-  const [lifeAdminItems, setLifeAdminItems] = useState<LifeAdminItem[]>(INITIAL_LIFE_ADMIN);
-  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>(INITIAL_KNOWLEDGE);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
+  const [littleThings, setLittleThings] = useState<LittleThing[]>([]);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [lifeAdminItems, setLifeAdminItems] = useState<LifeAdminItem[]>([]);
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
   const [encouragements, setEncouragements] = useState<Encouragement[]>(INITIAL_ENCOURAGEMENTS);
-  const [events, setEvents] = useState<EventItem[]>(INITIAL_EVENTS);
-  const [achievements, setAchievements] = useState<Achievement[]>(INITIAL_ACHIEVEMENTS);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   
   // New upgrade state
-  const [projects, setProjects] = useState<ProjectItem[]>(INITIAL_PROJECTS);
-  const [classSchedule, setClassSchedule] = useState<ClassScheduleItem[]>(INITIAL_CLASS_SCHEDULE);
-  const [sharedExpenses, setSharedExpenses] = useState<SharedExpense[]>(INITIAL_SHARED_EXPENSES);
-  const [trips, setTrips] = useState<TripItem[]>(INITIAL_TRIPS);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>(INITIAL_SUBSCRIPTIONS);
-  const [documents, setDocuments] = useState<DocumentItem[]>(INITIAL_DOCUMENTS);
-  const [skills, setSkills] = useState<SkillItem[]>(INITIAL_SKILLS);
-  const [readingBooks, setReadingBooks] = useState<ReadingBook[]>(INITIAL_READING);
-  const [challenges, setChallenges] = useState<PersonalChallenge[]>(INITIAL_CHALLENGES);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [classSchedule, setClassSchedule] = useState<ClassScheduleItem[]>([]);
+  const [sharedExpenses, setSharedExpenses] = useState<SharedExpense[]>([]);
+  const [trips, setTrips] = useState<TripItem[]>([]);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [skills, setSkills] = useState<SkillItem[]>([]);
+  const [readingBooks, setReadingBooks] = useState<ReadingBook[]>([]);
+  const [challenges, setChallenges] = useState<PersonalChallenge[]>([]);
 
   // Modes & Focus
   const [specialMode, setSpecialMode] = useState<SpecialMode>('NORMAL');
-  const [todaysTopThree, setTodaysTopThree] = useState<string[]>(['task_1', 'task_2', 'task_4']);
-  const [oneThingId, setOneThingId] = useState<string | null>('task_1');
+  const [todaysTopThree, setTodaysTopThree] = useState<string[]>([]);
+  const [oneThingId, setOneThingId] = useState<string | null>(null);
 
-  // Clean Mode (Real Life vs Demo Data) & Reminders
-  const [isCleanMode, setIsCleanMode] = useState<boolean>(false);
+  // Clean Mode (Real Life vs Demo Data) & Reminders - Default to TRUE for pure fresh life
+  const [isCleanMode, setIsCleanMode] = useState<boolean>(true);
   const [activeReminderAlert, setActiveReminderAlert] = useState<any>(null);
 
   // Lightbox
   const [lightbox, setLightbox] = useState<LightboxData | null>(null);
 
-  const [waterIntake, setWaterIntake] = useState<number>(1750);
-  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([
-    {
-      id: 'sleep_1',
-      userId: 'user_shanmukh',
-      date: new Date().toISOString().split('T')[0],
-      bedtime: '23:15',
-      wakeTime: '06:50',
-      durationMinutes: 455,
-      quality: 4,
-      visibility: 'SHARED'
-    }
-  ]);
-  const [meals, setMeals] = useState<MealItem[]>([
-    {
-      id: 'meal_1',
-      spaceId: 'space_lifeos_demo',
-      userId: 'user_shanmukh',
-      date: new Date().toISOString().split('T')[0],
-      mealType: 'Breakfast',
-      food: '3 scrambled eggs with avocado and sourdough toast',
-      estimatedCalories: 580,
-      photoUrl: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&auto=format&fit=crop&q=80',
-      visibility: 'SHARED',
-      time: '08:15 AM'
-    }
-  ]);
-  const [workouts, setWorkouts] = useState<WorkoutLog[]>([
-    {
-      id: 'wo_1',
-      spaceId: 'space_lifeos_demo',
-      userId: 'user_shanmukh',
-      date: new Date().toISOString().split('T')[0],
-      type: 'Strength',
-      durationMinutes: 45,
-      exercises: [
-        { name: 'Dumbbell Bench Press', sets: 4, reps: 10, weightKg: 26 },
-        { name: 'Bent-Over Dumbbell Rows', sets: 4, reps: 12, weightKg: 24 },
-        { name: 'Overhead Shoulder Press', sets: 3, reps: 10, weightKg: 18 }
-      ],
-      photoUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500&auto=format&fit=crop&q=80',
-      notes: 'Felt very explosive on the press today.',
-      visibility: 'SHARED'
-    }
-  ]);
-  const [cycleLogs, setCycleLogs] = useState<CycleLog[]>([
-    {
-      id: 'cycle_1',
-      userId: 'user_satvika',
-      periodStartDate: '2026-09-24',
-      cycleLengthDays: 28,
-      periodDurationDays: 5,
-      symptoms: ['Mild cramps', 'Fatigue day 1'],
-      mood: 'Calm',
-      energyLevel: 6,
-      visibility: 'PRIVATE' // Strictly PRIVATE by default
-    }
-  ]);
+  const [waterIntake, setWaterIntake] = useState<number>(0);
+  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
+  const [meals, setMeals] = useState<MealItem[]>([]);
+  const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
+  const [cycleLogs, setCycleLogs] = useState<CycleLog[]>([]);
 
   const [activeView, setActiveView] = useState<string>('HOME');
 
@@ -402,9 +349,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.tasks) && isMounted) {
-            if (data.tasks.length > 0) {
-              setTasks(data.tasks);
-            }
+            setTasks(data.tasks);
           }
         }
       } catch (e) {
