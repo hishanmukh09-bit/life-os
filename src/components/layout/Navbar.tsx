@@ -49,7 +49,8 @@ export function Navbar() {
     switchUser, 
     setAccentColor, 
     setTheme,
-    setActiveView 
+    setActiveView,
+    cloudSyncStatus
   } = useLifeOS();
   
   const [copied, setCopied] = useState(false);
@@ -146,6 +147,32 @@ export function Navbar() {
             <span className="font-mono font-bold tracking-wider">{currentSpace.inviteCode}</span>
             {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
           </button>
+
+          {/* Live Multi-Device Cloud Sync Status Pill */}
+          <div
+            title={
+              cloudSyncStatus === 'connected'
+                ? 'Live Cloud Sync Connected: Changes synchronize simultaneously across your phone, laptop, and all devices.'
+                : cloudSyncStatus === 'connecting'
+                ? 'Connecting to real-time sync channel...'
+                : 'Reconnecting to cloud sync...'
+            }
+            className="flex items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-foreground"
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                cloudSyncStatus === 'connected'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : cloudSyncStatus === 'connecting'
+                  ? 'bg-amber-500 animate-ping'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span className="hidden sm:inline text-muted-foreground">Sync:</span>
+            <span className="font-semibold text-[11px] text-foreground">
+              {cloudSyncStatus === 'connected' ? 'Live' : cloudSyncStatus === 'connecting' ? 'Connecting' : 'Offline'}
+            </span>
+          </div>
 
           {/* Quick Partner Awareness Pill */}
           {partnerUser && (

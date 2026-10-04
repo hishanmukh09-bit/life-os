@@ -69,6 +69,7 @@ import { generateId } from './utils';
 import { AIService } from './ai-service';
 import { reminderEngine } from './reminder-engine';
 import { WEBSTORAGE_KEYS, getWebStorage, setWebStorage } from './webstorage';
+import { broadcastSyncAction, initRealtimeCloudSync, SyncPayload } from './cloud-sync';
 
 export interface LightboxData {
   url: string;
@@ -205,6 +206,7 @@ interface LifeOSContextType {
   addLifeAdminItem: (item: Omit<LifeAdminItem, 'id' | 'spaceId' | 'userId' | 'status'>) => void;
   toggleLifeAdminStatus: (id: string) => void;
   addKnowledgeItem: (title: string, category: KnowledgeItem['category'], content: string, tags: string[]) => void;
+  cloudSyncStatus: 'connecting' | 'connected' | 'offline';
 }
 
 const LifeOSContext = createContext<LifeOSContextType | undefined>(undefined);
@@ -248,6 +250,11 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   // Clean Mode (Real Life vs Demo Data) & Reminders - Default to TRUE for pure fresh life
   const [isCleanMode, setIsCleanMode] = useState<boolean>(true);
   const [activeReminderAlert, setActiveReminderAlert] = useState<any>(null);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
+
+  // Fresh refs for CloudSync event listeners
+  const tasksRef = React.useRef(tasks);
+  tasksRef.current = tasks;
 
   // Lightbox
   const [lightbox, setLightbox] = useState<LightboxData | null>(null);
@@ -587,6 +594,194 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     };
   }, [currentSpace.id, currentUser.id]);
 
+  // Real-Time Multi-Device Cloud Sync Listener (Instant phone <-> laptop sync)
+  useEffect(() => {
+    const unsub = initRealtimeCloudSync(
+      currentSpace.id,
+      (payload: SyncPayload) => {
+        const { action, data } = payload;
+        if (!action || !data) return;
+
+        if (action === 'SYNC_REQUEST') {
+          if (tasksRef.current && tasksRef.current.length > 0) {
+            broadcastSyncAction(currentSpace.id, 'FULL_SYNC', { tasks: tasksRef.current });
+          }
+          return;
+        }
+
+        if (action === 'FULL_SYNC') {
+          const remoteTasks = data.tasks as TaskItem[];
+          if (Array.isArray(remoteTasks) && remoteTasks.length > 0) {
+            setTasks(prev => {
+              const taskMap = new Map<string, TaskItem>();
+              prev.forEach(t => taskMap.set(t.id, t));
+              remoteTasks.forEach(rt => {
+                const existing = taskMap.get(rt.id);
+                if (!existing) {
+                  taskMap.set(rt.id, rt);
+                } else {
+                  const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+                  const remoteTime = new Date(rt.updatedAt || rt.createdAt || 0).getTime();
+                  if (rt.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+                    taskMap.set(rt.id, rt);
+                  } else if (remoteTime > localTime) {
+                    taskMap.set(rt.id, rt);
+                  }
+                  if (rt.proof && !taskMap.get(rt.id)?.proof) {
+                    const cur = taskMap.get(rt.id) || existing;
+                    taskMap.set(rt.id, { ...cur, proof: rt.proof });
+                  }
+                }
+              });
+              const merged = Array.from(taskMap.values());
+              setWebStorage(WEBSTORAGE_KEYS.TASKS, merged);
+              return merged;
+            });
+          }
+          return;
+        }
+
+        if (action === 'TASK_CREATE') {
+          const newTask = data as TaskItem;
+          if (!newTask?.id) return;
+          setTasks(prev => {
+            if (prev.some(t => t.id === newTask.id)) return prev;
+            const updated = [newTask, ...prev];
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TASK_TOGGLE') {
+          const { taskId, status, completedAt, updatedAt, proof } = data;
+          setTasks(prev => {
+            const updated = prev.map(t => {
+              if (t.id === taskId) {
+                return {
+                  ...t,
+                  status: status || (t.status === 'COMPLETED' ? 'TODO' : 'COMPLETED'),
+                  completedAt: completedAt || (status === 'COMPLETED' ? new Date().toISOString() : undefined),
+                  updatedAt: updatedAt || new Date().toISOString(),
+                  proof: proof !== undefined ? proof : t.proof
+                };
+              }
+              return t;
+            });
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TASK_DELETE') {
+          const { taskId, deletedAt } = data;
+          setTasks(prev => {
+            const target = prev.find(t => t.id === taskId);
+            if (target) {
+              const deletedItem = { ...target, deletedAt: deletedAt || new Date().toISOString() };
+              setTrashTasks(tr => {
+                if (tr.some(t => t.id === taskId)) return tr;
+                const updatedTrash = [deletedItem, ...tr];
+                setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
+                return updatedTrash;
+              });
+            }
+            const updated = prev.filter(t => t.id !== taskId);
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TASK_RESTORE') {
+          const { taskId, updatedAt } = data;
+          setTrashTasks(prevTrash => {
+            const target = prevTrash.find(t => t.id === taskId);
+            if (target) {
+              const restored = { ...target, deletedAt: undefined, updatedAt: updatedAt || new Date().toISOString() };
+              setTasks(prevTasks => {
+                if (prevTasks.some(t => t.id === taskId)) return prevTasks;
+                const updated = [restored, ...prevTasks];
+                setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+                return updated;
+              });
+            }
+            const updatedTrash = prevTrash.filter(t => t.id !== taskId);
+            setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
+            return updatedTrash;
+          });
+          return;
+        }
+
+        if (action === 'TASK_SNOOZE' || action === 'TASK_RESCHEDULE') {
+          const { taskId, dueDate, dueTime, updatedAt } = data;
+          setTasks(prev => {
+            const updated = prev.map(t => {
+              if (t.id === taskId) {
+                return {
+                  ...t,
+                  dueDate: dueDate !== undefined ? dueDate : t.dueDate,
+                  dueTime: dueTime !== undefined ? dueTime : t.dueTime,
+                  updatedAt: updatedAt || new Date().toISOString()
+                };
+              }
+              return t;
+            });
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TASK_PROOF_REPLACE') {
+          const { taskId, proof, updatedAt } = data;
+          setTasks(prev => {
+            const updated = prev.map(t => t.id === taskId ? { ...t, proof, updatedAt } : t);
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TASK_PROOF_DELETE') {
+          const { taskId, updatedAt } = data;
+          setTasks(prev => {
+            const updated = prev.map(t => t.id === taskId ? { ...t, proof: undefined, updatedAt } : t);
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TASK_SUBTASK_TOGGLE') {
+          const { taskId, subtaskId, completed, updatedAt } = data;
+          setTasks(prev => {
+            const updated = prev.map(t => {
+              if (t.id === taskId && t.subtasks) {
+                return {
+                  ...t,
+                  updatedAt: updatedAt || new Date().toISOString(),
+                  subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, completed } : s)
+                };
+              }
+              return t;
+            });
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+            return updated;
+          });
+          return;
+        }
+      },
+      (status) => setCloudSyncStatus(status)
+    );
+
+    // Initial broadcast to announce presence and request peer state
+    broadcastSyncAction(currentSpace.id, 'SYNC_REQUEST', {});
+
+    return () => unsub();
+  }, [currentSpace.id]);
+
   // Real Persistent Reminder Engine Listener
   useEffect(() => {
     reminderEngine.init();
@@ -630,7 +825,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
-    // 2. Background SQLite database persistence
+    // 2. Real-time multi-device cloud broadcast
+    broadcastSyncAction(currentSpace.id, 'TASK_CREATE', newTask);
+
+    // 3. Background SQLite database persistence
     try {
       await fetch('/api/tasks', {
         method: 'POST',
@@ -659,6 +857,16 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       ? AIService.verifyPhotoProof(target.category, target.title, proofImg) 
       : undefined;
 
+    const proofObj = proofImg ? {
+      id: generateId('proof'),
+      taskId,
+      imageUrl: proofImg,
+      uploadedBy: currentUser.name.split(' ')[0],
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      visibility: target.visibility,
+      aiVerification
+    } : (nextStatus === 'TODO' ? undefined : target.proof);
+
     setTasks(prev => {
       const updated = prev.map(t => {
         if (t.id === taskId) {
@@ -667,21 +875,24 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             status: nextStatus,
             completedAt: nextStatus === 'COMPLETED' ? now : undefined,
             updatedAt: now,
-            proof: proofImg ? {
-              id: generateId('proof'),
-              taskId,
-              imageUrl: proofImg,
-              uploadedBy: currentUser.name.split(' ')[0],
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              visibility: t.visibility,
-              aiVerification
-            } : t.proof
+            proof: proofObj
           };
         }
         return t;
       });
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
+    });
+
+    // Broadcast in real-time to all connected devices (phone, laptop, tablet)
+    broadcastSyncAction(currentSpace.id, 'TASK_TOGGLE', {
+      taskId,
+      status: nextStatus,
+      completedAt: nextStatus === 'COMPLETED' ? now : undefined,
+      updatedAt: now,
+      proof: proofObj,
+      userId: currentUser.id,
+      userName: currentUser.name
     });
 
     // Immediate DB synchronization
@@ -716,6 +927,13 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
+    broadcastSyncAction(currentSpace.id, 'TASK_SNOOZE', {
+      taskId,
+      dueDate: newDate,
+      dueTime: newTime,
+      updatedAt: now
+    });
+
     fetch('/api/tasks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -729,11 +947,20 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
   // Reschedule task date & time
   const rescheduleTask = (taskId: string, newDate: string, newTime?: string) => {
+    const target = tasks.find(t => t.id === taskId);
     const now = new Date().toISOString();
+    const finalTime = newTime || target?.dueTime;
     setTasks(prev => {
-      const updated = prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime || t.dueTime, updatedAt: now } : t);
+      const updated = prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: finalTime, updatedAt: now } : t);
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
+    });
+
+    broadcastSyncAction(currentSpace.id, 'TASK_RESCHEDULE', {
+      taskId,
+      dueDate: newDate,
+      dueTime: finalTime,
+      updatedAt: now
     });
 
     fetch('/api/tasks', {
@@ -752,7 +979,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = (taskId: string) => {
     const target = tasks.find(t => t.id === taskId);
     if (target) {
-      const deletedItem = { ...target, deletedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const deletedItem = { ...target, deletedAt: now };
       setTrashTasks(prev => {
         const updatedTrash = [deletedItem, ...prev];
         setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
@@ -764,6 +992,11 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         return updated;
       });
 
+      broadcastSyncAction(currentSpace.id, 'TASK_DELETE', {
+        taskId,
+        deletedAt: now
+      });
+
       fetch(`/api/tasks?id=${taskId}`, { method: 'DELETE' }).catch(() => {});
     }
   };
@@ -771,7 +1004,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const restoreTask = (taskId: string) => {
     const target = trashTasks.find(t => t.id === taskId);
     if (target) {
-      const restored = { ...target, deletedAt: undefined, updatedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const restored = { ...target, deletedAt: undefined, updatedAt: now };
       setTrashTasks(prev => {
         const updatedTrash = prev.filter(t => t.id !== taskId);
         setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
@@ -781,6 +1015,11 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         const updated = [restored, ...prev];
         setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
         return updated;
+      });
+
+      broadcastSyncAction(currentSpace.id, 'TASK_RESTORE', {
+        taskId,
+        updatedAt: now
       });
 
       fetch('/api/tasks', {
@@ -838,30 +1077,40 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteTaskProof = (taskId: string) => {
+    const now = new Date().toISOString();
     setTasks(prev => {
-      const updated = prev.map(t => t.id === taskId ? { ...t, proof: undefined, updatedAt: new Date().toISOString() } : t);
+      const updated = prev.map(t => t.id === taskId ? { ...t, proof: undefined, updatedAt: now } : t);
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
+    });
+
+    broadcastSyncAction(currentSpace.id, 'TASK_PROOF_DELETE', {
+      taskId,
+      updatedAt: now
     });
   };
 
   const replaceTaskProof = (taskId: string, newUrl: string) => {
+    const now = new Date().toISOString();
+    let newProofObj: any = null;
+
     setTasks(prev => {
       const updated = prev.map(t => {
         if (t.id === taskId) {
           const aiVerification = AIService.verifyPhotoProof(t.category, t.title, newUrl);
+          newProofObj = {
+            id: generateId('proof'),
+            taskId,
+            imageUrl: newUrl,
+            uploadedBy: currentUser.name.split(' ')[0],
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            visibility: t.visibility,
+            aiVerification
+          };
           return {
             ...t,
-            updatedAt: new Date().toISOString(),
-            proof: {
-              id: generateId('proof'),
-              taskId,
-              imageUrl: newUrl,
-              uploadedBy: currentUser.name.split(' ')[0],
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              visibility: t.visibility,
-              aiVerification
-            }
+            updatedAt: now,
+            proof: newProofObj
           };
         }
         return t;
@@ -869,22 +1118,46 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
     });
+
+    if (newProofObj) {
+      broadcastSyncAction(currentSpace.id, 'TASK_PROOF_REPLACE', {
+        taskId,
+        proof: newProofObj,
+        updatedAt: now
+      });
+    }
   };
 
   const toggleTaskSubtask = (taskId: string, subtaskId: string) => {
+    const now = new Date().toISOString();
+    let completedState = false;
+
     setTasks(prev => {
       const updated = prev.map(t => {
         if (t.id === taskId && t.subtasks) {
           return {
             ...t,
-            updatedAt: new Date().toISOString(),
-            subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, completed: !s.completed } : s)
+            updatedAt: now,
+            subtasks: t.subtasks.map(s => {
+              if (s.id === subtaskId) {
+                completedState = !s.completed;
+                return { ...s, completed: completedState };
+              }
+              return s;
+            })
           };
         }
         return t;
       });
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
+    });
+
+    broadcastSyncAction(currentSpace.id, 'TASK_SUBTASK_TOGGLE', {
+      taskId,
+      subtaskId,
+      completed: completedState,
+      updatedAt: now
     });
   };
 
@@ -1417,6 +1690,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         addLifeAdminItem,
         toggleLifeAdminStatus,
         addKnowledgeItem,
+        cloudSyncStatus,
       }}
     >
       {children}
