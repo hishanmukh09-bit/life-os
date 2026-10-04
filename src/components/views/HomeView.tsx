@@ -20,8 +20,14 @@ import {
   Trash2,
   GraduationCap,
   ArrowRight,
-  Smile
+  Smile,
+  Utensils,
+  Sunrise,
+  Sun,
+  Moon,
+  Coffee
 } from 'lucide-react';
+import { MealSlot } from '@/types';
 
 export function HomeView() {
   const {
@@ -36,7 +42,9 @@ export function HomeView() {
     deleteExam,
     openLightbox,
     sendEncouragement,
-    setActiveView
+    setActiveView,
+    dailyMealChecks,
+    toggleMealCheck
   } = useLifeOS();
 
   // Tasks filter: 'MINE' (Personal private) vs 'SHARED' (Collab)
@@ -453,7 +461,86 @@ export function HomeView() {
         </div>
       </div>
 
-      {/* 4. UPCOMING EXAMS & ACADEMICS */}
+      {/* 4. DAILY MEAL STATUS (Morning, Lunch, Snacks, Dinner) */}
+      <div className="rounded-3xl border border-primary/20 bg-card p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Utensils className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-bold text-foreground">Today&apos;s Meals (Had or Not)</h2>
+          </div>
+          <button
+            onClick={() => setActiveView('FOOD')}
+            className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+          >
+            <span>Food & Nutrition</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { slot: 'BREAKFAST' as MealSlot, label: 'Morning', icon: Sunrise, time: 'Breakfast' },
+            { slot: 'LUNCH' as MealSlot, label: 'Lunch', icon: Sun, time: 'Midday' },
+            { slot: 'SNACK' as MealSlot, label: 'Snacks', icon: Coffee, time: 'Afternoon' },
+            { slot: 'DINNER' as MealSlot, label: 'Dinner', icon: Moon, time: 'Night' }
+          ].map(({ slot, label, icon: Icon, time }) => {
+            const myCheck = dailyMealChecks.find(c => c.userId === currentUser.id && c.date === todayStr && c.slot === slot);
+            const partnerCheck = partnerUser ? dailyMealChecks.find(c => c.userId === partnerUser.id && c.date === todayStr && c.slot === slot) : null;
+            const had = Boolean(myCheck?.had);
+
+            return (
+              <div
+                key={slot}
+                onClick={() => toggleMealCheck(slot)}
+                className={`cursor-pointer rounded-2xl border p-3.5 transition-all space-y-2 select-none active:scale-95 ${
+                  had
+                    ? 'border-emerald-500/40 bg-emerald-500/10 shadow-xs'
+                    : 'border-border/70 bg-secondary/30 hover:border-primary/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${had ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-foreground block">{label}</span>
+                      <span className="text-[10px] text-muted-foreground">{time}</span>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md ${
+                      had ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {had ? 'HAD' : 'NOT YET'}
+                  </span>
+                </div>
+
+                <div className="pt-1 text-[11px] border-t border-border/40 space-y-0.5">
+                  <div className="flex justify-between items-center text-foreground font-semibold">
+                    <span>Me:</span>
+                    <span className={had ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>
+                      {had ? `Eaten (${myCheck?.time || 'Today'})` : 'Tap to mark'}
+                    </span>
+                  </div>
+                  {partnerUser && (
+                    <div className="flex justify-between items-center text-muted-foreground text-[10px]">
+                      <span>{partnerUser.name.split(' ')[0]}:</span>
+                      <span className={partnerCheck?.had ? 'text-emerald-500 font-semibold' : 'text-muted-foreground italic'}>
+                        {partnerCheck?.had ? `Eaten (${partnerCheck.time || ''})` : 'Not yet'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 5. UPCOMING EXAMS & ACADEMICS */}
       <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

@@ -188,6 +188,22 @@ export interface SleepLog {
   visibility: Visibility;
 }
 
+export type MealSlot = 'BREAKFAST' | 'LUNCH' | 'SNACK' | 'DINNER';
+
+export interface DailyMealCheck {
+  id: string;
+  spaceId: string;
+  userId: string;
+  userName: string;
+  date: string; // YYYY-MM-DD
+  slot: MealSlot;
+  had: boolean;
+  time?: string;
+  dishName?: string;
+  notes?: string;
+  updatedAt: string;
+}
+
 export interface MealItem {
   id: string;
   spaceId: string;
@@ -221,6 +237,13 @@ export interface WorkoutLog {
   notes?: string;
   photoUrl?: string;
   visibility: Visibility;
+  // Nike Run Club metrics & runners log
+  distanceKm?: number;
+  pacePerKm?: string;
+  avgHeartRate?: number;
+  caloriesBurned?: number;
+  runType?: 'OUTDOOR' | 'TREADMILL' | 'INTERVALS';
+  guidedRunName?: string;
 }
 
 export interface CycleLog {

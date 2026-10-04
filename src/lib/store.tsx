@@ -37,7 +37,9 @@ import {
   ReadingBook,
   PersonalChallenge,
   SpecialMode,
-  DailyPartnerNote
+  DailyPartnerNote,
+  MealSlot,
+  DailyMealCheck
 } from '@/types';
 import {
   DEMO_SPACE,
@@ -214,6 +216,9 @@ interface LifeOSContextType {
   deleteExam: (id: string) => void;
   cloudSyncStatus: 'connecting' | 'connected' | 'offline';
   triggerSync: () => void;
+  // Daily Meal Slots (Morning, Lunch, Snacks, Dinner)
+  dailyMealChecks: DailyMealCheck[];
+  toggleMealCheck: (slot: MealSlot, dishName?: string, forUserId?: string) => void;
 }
 
 const LifeOSContext = createContext<LifeOSContextType | undefined>(undefined);
@@ -249,6 +254,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [readingBooks, setReadingBooks] = useState<ReadingBook[]>([]);
   const [challenges, setChallenges] = useState<PersonalChallenge[]>([]);
   const [dailyPartnerNotes, setDailyPartnerNotes] = useState<DailyPartnerNote[]>([]);
+  const [dailyMealChecks, setDailyMealChecks] = useState<DailyMealCheck[]>([]);
 
   // Modes & Focus
   const [specialMode, setSpecialMode] = useState<SpecialMode>('NORMAL');
@@ -321,6 +327,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   sessionsRef.current = studySessions;
   const dailyNotesRef = React.useRef(dailyPartnerNotes);
   dailyNotesRef.current = dailyPartnerNotes;
+  const mealChecksRef = React.useRef(dailyMealChecks);
+  mealChecksRef.current = dailyMealChecks;
   const currentUserRef = React.useRef(currentUser);
   currentUserRef.current = currentUser;
 
@@ -489,6 +497,9 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
     const storedDailyNotes = getWebStorage<DailyPartnerNote[]>(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, []);
     if (storedDailyNotes.length > 0) setDailyPartnerNotes(storedDailyNotes);
+
+    const storedMealChecks = getWebStorage<DailyMealCheck[]>(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, []);
+    if (storedMealChecks.length > 0) setDailyMealChecks(storedMealChecks);
 
     setIsWebStorageReady(true);
   }, []);
@@ -709,7 +720,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             studySubjects: subjectsRef.current,
             exams: examsRef.current,
             studySessions: sessionsRef.current,
-            dailyPartnerNotes: dailyNotesRef.current
+            dailyPartnerNotes: dailyNotesRef.current,
+            dailyMealChecks: mealChecksRef.current
           });
           return;
         }
@@ -915,6 +927,35 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
               const merged = Array.from(map.values());
               setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, merged);
               return merged;
+            });
+          }
+          // Merge Daily Meal Checks
+          if (Array.isArray(data.dailyMealChecks) && data.dailyMealChecks.length > 0) {
+            setDailyMealChecks(prev => {
+              const map = new Map<string, DailyMealCheck>();
+              prev.forEach(c => map.set(`${c.userId}_${c.date}_${c.slot}`, c));
+              data.dailyMealChecks.forEach((rc: DailyMealCheck) => {
+                map.set(`${rc.userId}_${rc.date}_${rc.slot}`, rc);
+              });
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, merged);
+              return merged;
+            });
+          }
+          return;
+        }
+
+        if (action === 'MEAL_CHECK_TOGGLE') {
+          const check = data as DailyMealCheck;
+          if (check?.id) {
+            if (check.userId !== currentUserRef.current.id && check.had) {
+              soundFx.playTaskCompleteChime();
+            }
+            setDailyMealChecks(prev => {
+              const filtered = prev.filter(c => !(c.userId === check.userId && c.date === check.date && c.slot === check.slot));
+              const updated = [check, ...filtered];
+              setWebStorage(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, updated);
+              return updated;
             });
           }
           return;
@@ -2026,6 +2067,51 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     broadcastSyncAction(currentSpace.id, 'EXAM_DELETE', { id });
   };
 
+  const toggleMealCheck = (slot: MealSlot, dishName?: string, forUserId?: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const targetUserId = forUserId || currentUser.id;
+    const targetUser = targetUserId === currentUser.id ? currentUser : (partnerUser || currentUser);
+    const existing = dailyMealChecks.find(c => c.userId === targetUserId && c.date === today && c.slot === slot);
+    const nowTime = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date());
+
+    let updatedCheck: DailyMealCheck;
+    if (existing) {
+      updatedCheck = {
+        ...existing,
+        had: !existing.had,
+        time: !existing.had ? nowTime : existing.time,
+        dishName: dishName || existing.dishName,
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      updatedCheck = {
+        id: generateId('mealchk'),
+        spaceId: currentSpace.id,
+        userId: targetUserId,
+        userName: targetUser.name.split(' ')[0],
+        date: today,
+        slot,
+        had: true,
+        time: nowTime,
+        dishName: dishName || undefined,
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    if (updatedCheck.had) {
+      soundFx.playTaskCompleteChime();
+    }
+
+    setDailyMealChecks(prev => {
+      const filtered = prev.filter(c => !(c.userId === targetUserId && c.date === today && c.slot === slot));
+      const updated = [updatedCheck, ...filtered];
+      setWebStorage(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, updated);
+      return updated;
+    });
+
+    broadcastSyncAction(currentSpace.id, 'MEAL_CHECK_TOGGLE', updatedCheck);
+  };
+
   const saveDailyNote = (noteText: string, moodEmoji: string = '💌') => {
     const today = new Date().toISOString().split('T')[0];
     const newNote: DailyPartnerNote = {
@@ -2489,6 +2575,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         saveDailyNote,
         deleteExam,
         cloudSyncStatus,
+        dailyMealChecks,
+        toggleMealCheck,
         triggerSync: () => {
           broadcastSyncAction(currentSpace.id, 'SYNC_REQUEST', { requestFrom: currentUser.id });
           broadcastSyncAction(currentSpace.id, 'FULL_SYNC', {
@@ -2509,7 +2597,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             studySubjects: subjectsRef.current,
             exams: examsRef.current,
             studySessions: sessionsRef.current,
-            dailyPartnerNotes: dailyNotesRef.current
+            dailyPartnerNotes: dailyNotesRef.current,
+            dailyMealChecks: mealChecksRef.current
           });
         }
       }}

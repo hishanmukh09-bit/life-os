@@ -41,7 +41,8 @@ export const WEBSTORAGE_KEYS = {
   IS_CLEAN_MODE: 'lifeos_permanent_clean_mode',
   CURRENT_USER: 'lifeos_permanent_user',
   CURRENT_SPACE: 'lifeos_permanent_space',
-  DAILY_PARTNER_NOTES: 'lifeos_permanent_daily_partner_notes'
+  DAILY_PARTNER_NOTES: 'lifeos_permanent_daily_partner_notes',
+  DAILY_MEAL_CHECKS: 'lifeos_permanent_daily_meal_checks'
 } as const;
 
 export function getWebStorage<T>(key: string, defaultValue: T): T {
