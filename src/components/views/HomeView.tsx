@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useLifeOS } from '@/lib/store';
+import { TaskItem } from '@/types';
 import {
   Heart,
   CheckSquare,
@@ -81,6 +82,15 @@ export function HomeView() {
     setIsEditingNote(false);
     setNoteSavedFeedback(true);
     setTimeout(() => setNoteSavedFeedback(false), 3000);
+  };
+
+  const handleToggleTaskWithProof = (task: TaskItem) => {
+    if (task.status !== 'COMPLETED' && task.proofRequired && !task.proof) {
+      alert(`"${task.title}" requires photo verification to complete. Opening Tasks view to attach proof.`);
+      setActiveView('TASKS');
+      return;
+    }
+    toggleTask(task.id);
   };
 
   const handleAddQuickTask = (e: React.FormEvent) => {
@@ -376,7 +386,7 @@ export function HomeView() {
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <button
-                      onClick={() => toggleTask(task.id)}
+                      onClick={() => handleToggleTaskWithProof(task)}
                       className="p-1 rounded-lg text-muted-foreground hover:text-primary shrink-0"
                     >
                       {task.status === 'COMPLETED' ? (
