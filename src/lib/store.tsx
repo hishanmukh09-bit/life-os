@@ -213,6 +213,7 @@ interface LifeOSContextType {
   saveDailyNote: (note: string, moodEmoji?: string) => void;
   deleteExam: (id: string) => void;
   cloudSyncStatus: 'connecting' | 'connected' | 'offline';
+  triggerSync: () => void;
 }
 
 const LifeOSContext = createContext<LifeOSContextType | undefined>(undefined);
@@ -635,20 +636,24 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
               // 1. Add server tasks
               data.tasks.forEach((t: TaskItem) => taskMap.set(t.id, t));
               
-              // 2. Merge local tasks (preserve local modifications & newly added tasks)
+              // 2. Merge local tasks without reverting completed tasks or losing local additions
               localTasks.forEach((t: TaskItem) => {
-                const existing = taskMap.get(t.id);
-                if (!existing) {
+                const serverTask = taskMap.get(t.id);
+                if (!serverTask) {
                   taskMap.set(t.id, t);
                 } else {
-                  const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+                  const isCompleted = serverTask.status === 'COMPLETED' || t.status === 'COMPLETED';
+                  const bestProof = t.proof || serverTask.proof;
+                  const serverTime = new Date(serverTask.updatedAt || serverTask.createdAt || 0).getTime();
                   const localTime = new Date(t.updatedAt || t.createdAt || 0).getTime();
-                  // Never revert a task completed locally with proof
-                  if (t.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
-                    taskMap.set(t.id, t);
-                  } else if (localTime >= existingTime) {
-                    taskMap.set(t.id, t);
-                  }
+                  const newerTask = serverTime > localTime ? serverTask : t;
+
+                  taskMap.set(t.id, {
+                    ...newerTask,
+                    status: isCompleted ? 'COMPLETED' : newerTask.status,
+                    proof: bestProof,
+                    completedAt: isCompleted ? (newerTask.completedAt || t.completedAt || new Date().toISOString()) : undefined
+                  });
                 }
               });
 
@@ -972,13 +977,15 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (action === 'TASK_TOGGLE') {
-          const { taskId, status, completedAt, updatedAt, proof, userId } = data;
+          const { taskId, status, completedAt, updatedAt, proof, userId, task: incomingTask } = data;
           if (status === 'COMPLETED' && userId && userId !== currentUserRef.current.id) {
             soundFx.playTaskCompleteChime();
           }
           setTasks(prev => {
+            let found = false;
             const updated = prev.map(t => {
               if (t.id === taskId) {
+                found = true;
                 return {
                   ...t,
                   status: status || (t.status === 'COMPLETED' ? 'TODO' : 'COMPLETED'),
@@ -989,8 +996,9 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
               }
               return t;
             });
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
+            const finalTasks = (found || !incomingTask) ? updated : [incomingTask, ...updated];
+            setWebStorage(WEBSTORAGE_KEYS.TASKS, finalTasks);
+            return finalTasks;
           });
           return;
         }
@@ -1500,6 +1508,14 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       soundFx.playTaskCompleteChime();
     }
 
+    const updatedTaskItem = {
+      ...target,
+      status: nextStatus,
+      completedAt: nextStatus === 'COMPLETED' ? now : undefined,
+      updatedAt: now,
+      proof: proofObj
+    };
+
     // Broadcast in real-time to all connected devices (phone, laptop, tablet)
     broadcastSyncAction(currentSpace.id, 'TASK_TOGGLE', {
       taskId,
@@ -1508,7 +1524,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       updatedAt: now,
       proof: proofObj,
       userId: currentUser.id,
-      userName: currentUser.name
+      userName: currentUser.name,
+      task: updatedTaskItem
     });
 
     // Immediate DB synchronization
@@ -2472,6 +2489,29 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         saveDailyNote,
         deleteExam,
         cloudSyncStatus,
+        triggerSync: () => {
+          broadcastSyncAction(currentSpace.id, 'SYNC_REQUEST', { requestFrom: currentUser.id });
+          broadcastSyncAction(currentSpace.id, 'FULL_SYNC', {
+            tasks: tasksRef.current,
+            habits: habitsRef.current,
+            projects: projectsRef.current,
+            goals: goalsRef.current,
+            shoppingItems: shoppingRef.current,
+            lifeAdminItems: lifeAdminRef.current,
+            waterIntake: waterRef.current,
+            sleepLogs: sleepRef.current,
+            meals: mealsRef.current,
+            workouts: workoutsRef.current,
+            memories: memoriesRef.current,
+            checkins: checkinsRef.current,
+            sharedExpenses: expensesRef.current,
+            trips: tripsRef.current,
+            studySubjects: subjectsRef.current,
+            exams: examsRef.current,
+            studySessions: sessionsRef.current,
+            dailyPartnerNotes: dailyNotesRef.current
+          });
+        }
       }}
     >
       {children}

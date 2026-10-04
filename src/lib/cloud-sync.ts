@@ -1,10 +1,12 @@
 /**
  * CloudSync Engine for LifeOS
- * Provides real-time, multi-device synchronization between phone, laptop, and all devices.
- * Uses HTTP/SSE pub-sub relay with automatic catchup and peer state synchronization.
+ * Provides reliable, instantaneous real-time multi-device synchronization
+ * between phone, laptop, tablet, and all connected devices.
+ * Uses native same-origin /api/sync SSE stream with persistent database catch-up.
  */
 
 export interface SyncPayload {
+  id?: string;
   senderDeviceId: string;
   action: string;
   timestamp: string;
@@ -26,13 +28,9 @@ export function getDeviceId(): string {
   }
 }
 
-export function getSyncTopic(spaceId: string): string {
-  const cleanId = (spaceId || 'space_lifeos_demo').replace(/[^a-zA-Z0-9_-]/g, '_');
-  return `lifeos_sync_shanmukh_${cleanId}`;
-}
-
 /**
- * Broadcast an action (e.g. task created, task completed with photo proof) to all other devices in real-time.
+ * Broadcast an action (e.g. task created, task completed with photo proof, habit log, daily note)
+ * to all other devices in real-time.
  */
 export async function broadcastSyncAction(
   spaceId: string,
@@ -41,7 +39,7 @@ export async function broadcastSyncAction(
 ): Promise<void> {
   if (typeof window === 'undefined') return;
 
-  const topic = getSyncTopic(spaceId);
+  const effectiveSpaceId = spaceId || 'space_lifeos_demo';
   const deviceId = getDeviceId();
   const payload: SyncPayload = {
     senderDeviceId: deviceId,
@@ -50,32 +48,17 @@ export async function broadcastSyncAction(
     data
   };
 
-  const jsonStr = JSON.stringify(payload);
-
-  // If payload is small (< 3500 chars), send directly as raw text in POST body for sub-100ms instant relay
-  if (jsonStr.length < 3500) {
-    try {
-      const res = await fetch(`https://ntfy.sh/${topic}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        body: jsonStr
-      });
-      if (res.ok) return;
-    } catch {
-      // Fallback to attachment
-    }
-  }
-
-  // If payload is larger (e.g. photo proof or full sync), send as attachment
   try {
-    await fetch(`https://ntfy.sh/${topic}`, {
-      method: 'PUT',
-      headers: {
-        Filename: `sync_${action.toLowerCase()}_${Date.now()}.json`,
-        'X-Title': `LifeOS Sync ${action}`,
-        'X-Message': action
-      },
-      body: jsonStr
+    await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spaceId: effectiveSpaceId,
+        action,
+        data,
+        senderDeviceId: deviceId,
+        timestamp: payload.timestamp
+      })
     });
   } catch (err) {
     console.warn('[CloudSync] Broadcast error:', err);
@@ -84,7 +67,8 @@ export async function broadcastSyncAction(
 
 /**
  * Connect to real-time CloudSync event stream.
- * Automatically catches up on events and listens via Server-Sent Events (SSE).
+ * Automatically catches up on all missed events and listens via Server-Sent Events (SSE)
+ * with robust auto-reconnecting background polling for mobile & laptop.
  */
 export function initRealtimeCloudSync(
   spaceId: string,
@@ -93,86 +77,86 @@ export function initRealtimeCloudSync(
 ): () => void {
   if (typeof window === 'undefined') return () => {};
 
-  const topic = getSyncTopic(spaceId);
+  const effectiveSpaceId = spaceId || 'space_lifeos_demo';
   const currentDeviceId = getDeviceId();
   let eventSource: EventSource | null = null;
   let isClosed = false;
-  const processedMessageIds = new Set<string>();
+  let lastSyncTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const processedEventIds = new Set<string>();
 
-  const handleRawMessage = async (msgId: string | undefined, msgText: string, attachmentUrl?: string) => {
-    if (msgId) {
-      if (processedMessageIds.has(msgId)) return;
-      processedMessageIds.add(msgId);
-      // Keep set bounded to last 500 messages
-      if (processedMessageIds.size > 500) {
-        const first = processedMessageIds.values().next().value;
-        if (first) processedMessageIds.delete(first);
+  const processEvent = (event: any) => {
+    if (!event || !event.action) return;
+
+    if (event.id) {
+      if (processedEventIds.has(event.id)) return;
+      processedEventIds.add(event.id);
+      if (processedEventIds.size > 1000) {
+        const first = processedEventIds.values().next().value;
+        if (first) processedEventIds.delete(first);
       }
     }
 
-    try {
-      let parsed: SyncPayload | null = null;
-
-      if (attachmentUrl) {
-        // Download attachment payload
-        const res = await fetch(attachmentUrl);
-        if (res.ok) {
-          parsed = await res.json();
-        }
-      } else if (msgText) {
-        parsed = JSON.parse(msgText);
+    if (event.timestamp) {
+      if (new Date(event.timestamp).getTime() > new Date(lastSyncTime).getTime()) {
+        lastSyncTime = event.timestamp;
       }
-
-      if (!parsed || !parsed.senderDeviceId || !parsed.action) return;
-
-      // Ignore our own broadcasts
-      if (parsed.senderDeviceId === currentDeviceId) return;
-
-      onRemoteAction(parsed);
-    } catch {
-      // Ignore heartbeat/ping formatting
     }
+
+    // Ignore broadcasts originating from this exact device
+    if (event.senderDeviceId === currentDeviceId) return;
+
+    onRemoteAction({
+      id: event.id,
+      senderDeviceId: event.senderDeviceId,
+      action: event.action,
+      timestamp: event.timestamp || new Date().toISOString(),
+      data: event.data
+    });
   };
 
   onStatusChange?.('connecting');
 
-  // 1. Initial catchup: Poll recent events from last 24 hours
-  fetch(`https://ntfy.sh/${topic}/json?poll=1&since=24h`)
-    .then((r) => r.text())
-    .then((text) => {
-      if (isClosed) return;
-      const lines = text.trim().split('\n');
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const item = JSON.parse(line);
-          if (item.event === 'message') {
-            handleRawMessage(item.id, item.message, item.attachment?.url);
+  // 1. Initial catchup & fallback poll function
+  const pollMissedEvents = async () => {
+    if (isClosed) return;
+    try {
+      const res = await fetch(`/api/sync?spaceId=${encodeURIComponent(effectiveSpaceId)}&since=${encodeURIComponent(lastSyncTime)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.events)) {
+          for (const ev of json.events) {
+            processEvent(ev);
           }
-        } catch {}
+          if (json.events.length > 0) {
+            onStatusChange?.('connected');
+          }
+        }
       }
-    })
-    .catch(() => {});
+    } catch {
+      // Offline fallback
+    }
+  };
 
-  // 2. Real-time Live Server-Sent Events (SSE)
+  // Run immediate catchup
+  pollMissedEvents();
+
+  // 2. Real-time Server-Sent Events (SSE) direct from internal /api/sync
   const connectSSE = () => {
     if (isClosed) return;
     try {
-      eventSource = new EventSource(`https://ntfy.sh/${topic}/sse`);
+      eventSource = new EventSource(`/api/sync?spaceId=${encodeURIComponent(effectiveSpaceId)}&stream=1`);
 
       eventSource.onopen = () => {
         if (!isClosed) onStatusChange?.('connected');
       };
 
-      eventSource.onmessage = (event) => {
+      eventSource.addEventListener('sync', (e: MessageEvent) => {
         if (isClosed) return;
         try {
-          const item = JSON.parse(event.data);
-          if (item.event === 'message') {
-            handleRawMessage(item.id, item.message, item.attachment?.url);
-          }
+          const ev = JSON.parse(e.data);
+          processEvent(ev);
         } catch {}
-      };
+      });
 
       eventSource.onerror = () => {
         if (eventSource) {
@@ -181,6 +165,7 @@ export function initRealtimeCloudSync(
         }
         if (!isClosed) {
           onStatusChange?.('offline');
+          // Reconnect SSE after 3s
           setTimeout(connectSSE, 3000);
         }
       };
@@ -194,8 +179,29 @@ export function initRealtimeCloudSync(
 
   connectSSE();
 
+  // 3. Mobile PWA Background Resiliency:
+  // On iOS Safari / Android Chrome when tab sleeps or phone is unlocked,
+  // trigger an immediate poll to fetch any changes made on the other device.
+  const pollInterval = setInterval(pollMissedEvents, 3500);
+
+  const onWindowFocus = () => {
+    pollMissedEvents();
+  };
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      pollMissedEvents();
+    }
+  };
+
+  window.addEventListener('focus', onWindowFocus);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
   return () => {
     isClosed = true;
+    clearInterval(pollInterval);
+    window.removeEventListener('focus', onWindowFocus);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     if (eventSource) {
       eventSource.close();
       eventSource = null;

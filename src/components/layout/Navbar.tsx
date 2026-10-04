@@ -32,7 +32,8 @@ import {
   Bot,
   Volume2,
   VolumeX,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { soundFx } from '@/lib/sound-fx';
 
@@ -57,6 +58,7 @@ export function Navbar() {
     setTheme,
     setActiveView,
     cloudSyncStatus,
+    triggerSync,
     requestNotificationPermission
   } = useLifeOS();
   
@@ -221,6 +223,29 @@ export function Navbar() {
             <span className="hidden md:inline font-semibold">
               {notifPermission === 'granted' ? 'Alerts On' : 'Enable Alerts'}
             </span>
+          </button>
+
+          {/* Live Real-Time Multi-Device Sync Indicator */}
+          <button
+            onClick={() => {
+              triggerSync();
+            }}
+            title={`Multi-Device Sync Status: ${cloudSyncStatus.toUpperCase()} (Click to refresh sync across phone & laptop)`}
+            className="flex items-center gap-1.5 rounded-full border border-border/60 bg-card/70 hover:bg-muted/60 px-2.5 py-1 text-xs font-medium transition-all text-muted-foreground hover:text-foreground active:scale-95"
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                cloudSyncStatus === 'connected'
+                  ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+                  : cloudSyncStatus === 'connecting'
+                  ? 'bg-amber-500 animate-spin'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span className="hidden sm:inline text-[11px] font-semibold">
+              {cloudSyncStatus === 'connected' ? 'Synced' : cloudSyncStatus === 'connecting' ? 'Syncing...' : 'Offline'}
+            </span>
+            <RefreshCw className="h-3 w-3 opacity-60 hover:opacity-100 hover:rotate-180 transition-transform" />
           </button>
 
           {/* Quick Partner Awareness Pill */}

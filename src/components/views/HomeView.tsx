@@ -521,26 +521,33 @@ export function HomeView() {
 
         <div className="flex items-center gap-2">
           {encouragementSent ? (
-            <span className="text-xs font-bold text-emerald-500 animate-in fade-in">
-              Sent with love! ❤️
+            <span className="text-xs font-bold text-primary animate-in fade-in flex items-center gap-1">
+              <span>Sent to partner!</span>
+              <span>🔥</span>
             </span>
           ) : (
             <>
               <button
-                onClick={() => handleSendQuickEncourage('❤️', `Thinking of you! Love you!`)}
-                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-medium hover:border-rose-500/50 hover:bg-rose-500/10 transition-colors"
+                onClick={() => handleSendQuickEncourage('🔥', `You've got this! Keep pushing forward!`)}
+                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-semibold hover:border-primary/50 hover:bg-primary/10 transition-colors"
               >
-                ❤️ Love you
+                🔥 You got this!
               </button>
               <button
-                onClick={() => handleSendQuickEncourage('💪', `Proud of your hard work today!`)}
-                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-medium hover:border-primary/50 hover:bg-primary/10 transition-colors"
+                onClick={() => handleSendQuickEncourage('💪', `Proud of your discipline and hard work today!`)}
+                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-semibold hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-colors"
               >
-                💪 Proud of you
+                💪 Keep crushing it
               </button>
               <button
-                onClick={() => handleSendQuickEncourage('☕', `Remember to drink water and take a breather!`)}
-                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-medium hover:border-amber-500/50 hover:bg-amber-500/10 transition-colors"
+                onClick={() => handleSendQuickEncourage('⚡', `Stay locked in! You are unstoppable today.`)}
+                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-semibold hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-colors"
+              >
+                ⚡ Stay locked in
+              </button>
+              <button
+                onClick={() => handleSendQuickEncourage('☕', `Remember to drink water and take a quick breather!`)}
+                className="px-3 py-1.5 rounded-xl bg-card border border-border text-xs font-semibold hover:border-amber-500/50 hover:bg-amber-500/10 transition-colors"
               >
                 ☕ Hydrate & rest
               </button>

@@ -182,10 +182,20 @@ function initSchema(db: DatabaseSync) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS sync_events (
+      id TEXT PRIMARY KEY,
+      space_id TEXT NOT NULL,
+      sender_device_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_tasks_space ON tasks (space_id, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks (creator_id, visibility);
     CREATE INDEX IF NOT EXISTS idx_reminders_sched ON reminders (status, scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_media_visibility ON media (space_id, visibility, owner_id);
+    CREATE INDEX IF NOT EXISTS idx_sync_events_space_time ON sync_events (space_id, created_at);
   `);
 
   const columns = db.prepare(`PRAGMA table_info(users)`).all() as Array<{ name: string }>;
@@ -789,6 +799,77 @@ export const PatternDb = {
       return;
     }
     db.prepare('DELETE FROM ai_patterns WHERE id = ?').run(id);
+  }
+};
+
+// ------------------- REAL-TIME MULTI-DEVICE SYNC EVENTS DB -------------------
+
+export interface StoredSyncEvent {
+  id: string;
+  space_id: string;
+  sender_device_id: string;
+  action: string;
+  payload_json: string;
+  created_at: string;
+}
+
+export const SyncEventDb = {
+  record(spaceId: string, senderDeviceId: string, action: string, data: any) {
+    const db = getDb();
+    const id = createId('ev');
+    const now = new Date().toISOString();
+    const json = JSON.stringify(data);
+    db.prepare(`
+      INSERT INTO sync_events (id, space_id, sender_device_id, action, payload_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, spaceId, senderDeviceId, action, json, now);
+
+    // Keep table bounded to recent 1000 events per space
+    db.prepare(`
+      DELETE FROM sync_events 
+      WHERE space_id = ? AND id NOT IN (
+        SELECT id FROM sync_events WHERE space_id = ? ORDER BY created_at DESC LIMIT 1000
+      )
+    `).run(spaceId, spaceId);
+
+    return { id, spaceId, senderDeviceId, action, data, createdAt: now };
+  },
+
+  listSince(spaceId: string, sinceIso?: string, limit: number = 200) {
+    const db = getDb();
+    if (sinceIso) {
+      const rows = (db.prepare(`
+        SELECT id, space_id, sender_device_id, action, payload_json, created_at
+        FROM sync_events
+        WHERE space_id = ? AND created_at > ?
+        ORDER BY created_at ASC
+        LIMIT ?
+      `).all(spaceId, sinceIso, limit) as unknown) as StoredSyncEvent[];
+      return rows.map(r => ({
+        id: r.id,
+        spaceId: r.space_id,
+        senderDeviceId: r.sender_device_id,
+        action: r.action,
+        data: JSON.parse(r.payload_json),
+        timestamp: r.created_at
+      }));
+    } else {
+      const rows = (db.prepare(`
+        SELECT id, space_id, sender_device_id, action, payload_json, created_at
+        FROM sync_events
+        WHERE space_id = ?
+        ORDER BY created_at DESC
+        LIMIT 60
+      `).all(spaceId) as unknown) as StoredSyncEvent[];
+      return rows.reverse().map(r => ({
+        id: r.id,
+        spaceId: r.space_id,
+        senderDeviceId: r.sender_device_id,
+        action: r.action,
+        data: JSON.parse(r.payload_json),
+        timestamp: r.created_at
+      }));
+    }
   }
 };
 
