@@ -50,13 +50,54 @@ export function PhotoPicker({
       return;
     }
 
-    // Generate permanent base64 Data URL so it is completely preserved across browser sessions
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const permanentDataUrl = reader.result as string;
-      setPreviewUrl(permanentDataUrl);
+    // Compress image to a web-optimized size (max 1200px) so it never exceeds WebStorage quotas or times out
+    try {
+      const compressedDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const src = ev.target?.result as string;
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL('image/jpeg', 0.8));
+            } else {
+              resolve(src);
+            }
+          };
+          img.onerror = () => resolve(src);
+          img.src = src;
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
 
-      // Attempt server API upload
+      if (!compressedDataUrl) {
+        setErrorMsg('Failed to process image file.');
+        return;
+      }
+
+      // Immediately set preview & notify parent component
+      setPreviewUrl(compressedDataUrl);
+      onPhotoSelected(compressedDataUrl, file);
+
+      // In background, attempt backend server persistence if available
       setIsUploading(true);
       try {
         const formData = new FormData();
@@ -77,19 +118,17 @@ export function PhotoPicker({
           if (data.success && data.url) {
             setPreviewUrl(data.url);
             onPhotoSelected(data.url, file);
-            return;
           }
         }
-        // Fallback to permanent Data URL if server upload endpoint is not available
-        onPhotoSelected(permanentDataUrl, file);
       } catch (err: any) {
-        console.warn('Backend upload unavailable, using permanent base64 Data URL:', err);
-        onPhotoSelected(permanentDataUrl, file);
+        console.warn('Backend upload offline, using optimized base64 Data URL');
       } finally {
         setIsUploading(false);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Error compressing photo:', err);
+      setErrorMsg('Failed to process image.');
+    }
   };
 
   const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

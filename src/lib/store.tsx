@@ -553,7 +553,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
                 } else {
                   const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
                   const localTime = new Date(t.updatedAt || t.createdAt || 0).getTime();
-                  if (localTime >= existingTime) {
+                  // Never revert a task completed locally with proof
+                  if (t.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+                    taskMap.set(t.id, t);
+                  } else if (localTime >= existingTime) {
                     taskMap.set(t.id, t);
                   }
                 }
@@ -643,14 +646,14 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     const target = tasks.find(t => t.id === taskId);
     if (!target) return { success: false, error: 'TASK_NOT_FOUND' };
 
-    const isCompleting = target.status !== 'COMPLETED';
+    const isCompleting = target.status !== 'COMPLETED' || Boolean(proofImg);
     // Strict Part 14: IF proofRequired == true AND no proof exists/provided THEN reject completion with PROOF_REQUIRED
     if (isCompleting && target.proofRequired && !proofImg && !target.proof) {
       console.warn(`[Task Proof Policy] Rejected completion for "${target.title}": PROOF_REQUIRED.`);
       return { success: false, error: 'PROOF_REQUIRED' };
     }
 
-    const isDone = target.status === 'COMPLETED';
+    const nextStatus: TaskItem['status'] = proofImg ? 'COMPLETED' : (target.status === 'COMPLETED' ? 'TODO' : 'COMPLETED');
     const now = new Date().toISOString();
     const aiVerification = proofImg 
       ? AIService.verifyPhotoProof(target.category, target.title, proofImg) 
@@ -661,8 +664,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         if (t.id === taskId) {
           return {
             ...t,
-            status: (isDone ? 'TODO' : 'COMPLETED') as TaskItem['status'],
-            completedAt: isDone ? undefined : now,
+            status: nextStatus,
+            completedAt: nextStatus === 'COMPLETED' ? now : undefined,
             updatedAt: now,
             proof: proofImg ? {
               id: generateId('proof'),
