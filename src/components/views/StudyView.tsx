@@ -47,6 +47,11 @@ export function StudyView() {
     addTask
   } = useLifeOS();
 
+  // Strict personal privacy: only show study items belonging to the current user
+  const mySubjects = studySubjects.filter(s => s.userId === currentUser.id);
+  const myExams = exams.filter(e => e.userId === currentUser.id);
+  const mySessions = studySessions.filter(s => s.userId === currentUser.id);
+
   // Add Exam Modal state
   const [showAddExamModal, setShowAddExamModal] = useState(false);
   const [newExamSubject, setNewExamSubject] = useState('');
@@ -101,7 +106,7 @@ export function StudyView() {
   const [focusMode, setFocusMode] = useState<StudySession['focusMode']>('25m');
   const [secondsRemaining, setSecondsRemaining] = useState<number>(25 * 60);
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [selectedSubject, setSelectedSubject] = useState<string>(studySubjects[0]?.name || 'Independent Study');
+  const [selectedSubject, setSelectedSubject] = useState<string>(mySubjects[0]?.name || 'Independent Study');
 
   // Post study knowledge capture
   const [showCaptureModal, setShowCaptureModal] = useState(false);
@@ -544,7 +549,7 @@ Unit 3: Robotics Dynamics & Control
             </div>
 
             <div className="space-y-3 pt-1">
-              {exams.length === 0 ? (
+              {myExams.length === 0 ? (
                 <div className="p-5 rounded-2xl border border-dashed border-border text-center space-y-2">
                   <p className="text-xs text-muted-foreground">No upcoming exams or test dates scheduled.</p>
                   <button
@@ -555,7 +560,7 @@ Unit 3: Robotics Dynamics & Control
                   </button>
                 </div>
               ) : (
-                exams.map(exam => {
+                myExams.map(exam => {
                   const countdown = getExamCountdown(exam.date);
                   return (
                     <div key={exam.id} className="p-3.5 rounded-2xl bg-secondary/30 border border-border/50 space-y-2 text-xs relative group">

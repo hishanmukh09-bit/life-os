@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export function SharedCalendarView() {
-  const { events, exams, tasks, trips, partnerUser } = useLifeOS();
+  const { currentUser, events, exams, tasks, trips, partnerUser } = useLifeOS();
   const [currentMonth, setCurrentMonth] = useState('October 2026');
   const [isGCalConnected, setIsGCalConnected] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
@@ -62,9 +62,10 @@ export function SharedCalendarView() {
       description?: string;
     }[] = [];
 
-    // Real tasks
+    // Real tasks: only current user's tasks or shared tasks
     tasks.forEach(t => {
-      if (t.dueDate === dayStr) {
+      const isAccessible = t.creatorId === currentUser.id || t.visibility === 'SHARED';
+      if (isAccessible && t.dueDate === dayStr) {
         items.push({
           id: t.id,
           title: t.title,
@@ -77,9 +78,9 @@ export function SharedCalendarView() {
       }
     });
 
-    // Real exams
+    // Real exams: strictly personal to current student
     exams.forEach(e => {
-      if (e.date === dayStr) {
+      if (e.userId === currentUser.id && e.date === dayStr) {
         items.push({
           id: e.id,
           title: `${e.subjectName} Exam`,

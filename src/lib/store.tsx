@@ -439,15 +439,20 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     const storedCheckins = getWebStorage<DailyCheckin[]>(WEBSTORAGE_KEYS.CHECKINS, []);
     if (storedCheckins.length > 0) setCheckins(storedCheckins);
 
-    // 4. Study & Academics
+    // 4. Study & Academics (Strictly personal to current user)
     const storedSubjects = getWebStorage<StudySubject[]>(WEBSTORAGE_KEYS.STUDY_SUBJECTS, []);
-    if (storedSubjects.length > 0) setStudySubjects(storedSubjects);
+    const demoSubjIds = new Set(['subj_robotics', 'subj_vision']);
+    const userSubjects = storedSubjects.filter(s => !demoSubjIds.has(s.id) && s.userId === currentUser.id);
+    setStudySubjects(userSubjects);
 
     const storedExams = getWebStorage<Exam[]>(WEBSTORAGE_KEYS.EXAMS, []);
-    if (storedExams.length > 0) setExams(storedExams);
+    const demoExamIds = new Set(['exam_robotics_midterm', 'exam_vision_quiz']);
+    const userExams = storedExams.filter(e => !demoExamIds.has(e.id) && e.userId === currentUser.id);
+    setExams(userExams);
 
     const storedSessions = getWebStorage<StudySession[]>(WEBSTORAGE_KEYS.STUDY_SESSIONS, []);
-    if (storedSessions.length > 0) setStudySessions(storedSessions);
+    const userSessions = storedSessions.filter(s => s.userId === currentUser.id);
+    setStudySessions(userSessions);
 
     const storedClasses = getWebStorage<ClassScheduleItem[]>(WEBSTORAGE_KEYS.CLASS_SCHEDULE, []);
     if (storedClasses.length > 0) setClassSchedule(storedClasses);
@@ -858,6 +863,54 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
               return Array.from(map.values());
             });
           }
+
+          // Merge Exams strictly for current user
+          if (Array.isArray(data.exams) && data.exams.length > 0) {
+            setExams(prev => {
+              const map = new Map<string, Exam>();
+              prev.forEach(e => map.set(e.id, e));
+              data.exams.forEach((re: Exam) => {
+                if (re.userId === currentUserRef.current.id) {
+                  map.set(re.id, re);
+                }
+              });
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.EXAMS, merged);
+              return merged;
+            });
+          }
+
+          // Merge Study Subjects strictly for current user
+          if (Array.isArray(data.studySubjects) && data.studySubjects.length > 0) {
+            setStudySubjects(prev => {
+              const map = new Map<string, StudySubject>();
+              prev.forEach(s => map.set(s.id, s));
+              data.studySubjects.forEach((rs: StudySubject) => {
+                if (rs.userId === currentUserRef.current.id) {
+                  map.set(rs.id, rs);
+                }
+              });
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, merged);
+              return merged;
+            });
+          }
+
+          // Merge Study Sessions strictly for current user
+          if (Array.isArray(data.studySessions) && data.studySessions.length > 0) {
+            setStudySessions(prev => {
+              const map = new Map<string, StudySession>();
+              prev.forEach(s => map.set(s.id, s));
+              data.studySessions.forEach((rs: StudySession) => {
+                if (rs.userId === currentUserRef.current.id) {
+                  map.set(rs.id, rs);
+                }
+              });
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, merged);
+              return merged;
+            });
+          }
           return;
         }
 
@@ -871,6 +924,20 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
               return updated;
             });
           }
+          return;
+        }
+
+        if (action === 'EXAM_ADD') {
+          const newExam = data as Exam;
+          if (!newExam?.id) return;
+          // STRICT PERSONAL PRIVACY: If another user added an exam, do not store or show it!
+          if (newExam.userId !== currentUserRef.current.id) return;
+          setExams(prev => {
+            if (prev.some(e => e.id === newExam.id)) return prev;
+            const updated = [...prev, newExam];
+            setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
+            return updated;
+          });
           return;
         }
 

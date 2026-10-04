@@ -72,6 +72,7 @@ export function HomeView() {
   );
 
   const currentDisplayTasks = taskTab === 'MINE' ? personalTasks : sharedTasks;
+  const myExams = exams.filter(e => e.userId === currentUser.id);
 
   const handleSaveNote = (e: React.FormEvent) => {
     e.preventDefault();
@@ -459,7 +460,7 @@ export function HomeView() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          {exams.length === 0 ? (
+          {myExams.length === 0 ? (
             <div className="col-span-full p-6 rounded-2xl border border-dashed border-border text-center space-y-2">
               <p className="text-xs text-muted-foreground">No upcoming exams added yet.</p>
               <button
@@ -470,7 +471,7 @@ export function HomeView() {
               </button>
             </div>
           ) : (
-            exams.map(exam => {
+            myExams.map(exam => {
               const countdown = getExamCountdown(exam.date);
               return (
                 <div key={exam.id} className="p-4 rounded-2xl bg-secondary/30 border border-border/50 space-y-2 text-xs">

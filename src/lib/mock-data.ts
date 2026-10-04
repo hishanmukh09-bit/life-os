@@ -530,65 +530,9 @@ export const INITIAL_CHECKINS: DailyCheckin[] = [
   }
 ];
 
-export const INITIAL_STUDY_SUBJECTS: StudySubject[] = [
-  {
-    id: 'subj_robotics',
-    spaceId: 'space_lifeos_demo',
-    userId: 'user_shanmukh',
-    name: 'Robotics Dynamics & Kinematics',
-    code: 'ROB-501',
-    color: '#6366f1',
-    targetHoursWeekly: 10,
-    topics: [
-      { id: 'top_1', title: 'Euler-Lagrange Formulations', masteryPercentage: 100, isWeakTopic: false },
-      { id: 'top_2', title: 'Newton-Euler Recursive Algorithm', masteryPercentage: 100, isWeakTopic: false },
-      { id: 'top_3', title: 'Inertia Tensor & Parallel Axis Theorem', masteryPercentage: 65, isWeakTopic: false },
-      { id: 'top_4', title: 'Forward & Inverse Dynamics Control', masteryPercentage: 35, isWeakTopic: true },
-      { id: 'top_5', title: 'Trajectory Spline Optimization', masteryPercentage: 10, isWeakTopic: true }
-    ]
-  },
-  {
-    id: 'subj_vision',
-    spaceId: 'space_lifeos_demo',
-    userId: 'user_shanmukh',
-    name: 'Computer Vision & Deep Perception',
-    code: 'CS-640',
-    color: '#06b6d4',
-    targetHoursWeekly: 8,
-    topics: [
-      { id: 'top_v1', title: 'Epipolar Geometry & Fundamental Matrix', masteryPercentage: 80, isWeakTopic: false },
-      { id: 'top_v2', title: 'Feature Detection (SIFT, ORB)', masteryPercentage: 90, isWeakTopic: false },
-      { id: 'top_v3', title: '3D Point Cloud Registration (ICP)', masteryPercentage: 50, isWeakTopic: true },
-      { id: 'top_v4', title: 'NeRF Neural Radiance Fields', masteryPercentage: 20, isWeakTopic: true }
-    ]
-  }
-];
+export const INITIAL_STUDY_SUBJECTS: StudySubject[] = [];
 
-export const INITIAL_EXAMS: Exam[] = [
-  {
-    id: 'exam_robotics_midterm',
-    spaceId: 'space_lifeos_demo',
-    userId: 'user_shanmukh',
-    subjectId: 'subj_robotics',
-    subjectName: 'Robotics Dynamics & Kinematics',
-    date: new Date(Date.now() + 86400000 * 12).toISOString().split('T')[0],
-    topics: ['Euler-Lagrange', 'Newton-Euler', 'Inertia Tensors', 'Trajectory Generation'],
-    difficulty: 'Hard',
-    revisionProgress: 68,
-    notes: 'Calculators and 2-page handwritten cheat sheet permitted'
-  },
-  {
-    id: 'exam_vision_quiz',
-    spaceId: 'space_lifeos_demo',
-    userId: 'user_shanmukh',
-    subjectId: 'subj_vision',
-    subjectName: 'Computer Vision & Deep Perception',
-    date: new Date(Date.now() + 86400000 * 19).toISOString().split('T')[0],
-    topics: ['Stereo Vision', 'Camera Calibration', 'Optical Flow'],
-    difficulty: 'Moderate',
-    revisionProgress: 45
-  }
-];
+export const INITIAL_EXAMS: Exam[] = [];
 
 export const INITIAL_GOALS: Goal[] = [
   {
