@@ -97,7 +97,7 @@ export default function AppEntry() {
       <div className="flex-1 flex w-full">
         <Sidebar />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 overflow-y-auto max-w-7xl mx-auto w-full">
           {renderActiveView()}
         </main>
       </div>

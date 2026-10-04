@@ -78,6 +78,14 @@ export function HomeView() {
   const [coachQuestion, setCoachQuestion] = useState('');
   const [coachAnswer, setCoachAnswer] = useState<string | null>(null);
 
+  const todayTasks = tasks.filter(t => t.creatorId === currentUser.id || t.visibility === 'SHARED');
+  const completedTasks = todayTasks.filter(t => t.status === 'COMPLETED');
+  const taskPct = todayTasks.length > 0 ? Math.round((completedTasks.length / todayTasks.length) * 100) : 0;
+  
+  const todayHabits = habits.filter(h => h.userId === currentUser.id);
+  const latestSleep = sleepLogs.find(s => s.userId === currentUser.id);
+  const todayWorkout = workouts.find(w => w.userId === currentUser.id);
+
   const handleAskCoach = (q: string) => {
     const query = q || coachQuestion;
     if (!query.trim()) return;
@@ -93,15 +101,6 @@ export function HomeView() {
     setCoachAnswer(ans);
     setCoachQuestion('');
   };
-
-  // Today's accessible tasks
-  const todayTasks = tasks.filter(t => t.creatorId === currentUser.id || t.visibility === 'SHARED');
-  const completedTasks = todayTasks.filter(t => t.status === 'COMPLETED');
-  const taskPct = todayTasks.length > 0 ? Math.round((completedTasks.length / todayTasks.length) * 100) : 0;
-  
-  const todayHabits = habits.filter(h => h.userId === currentUser.id);
-  const latestSleep = sleepLogs.find(s => s.userId === currentUser.id);
-  const todayWorkout = workouts.find(w => w.userId === currentUser.id);
 
   // Partner's shared items only (Strict Privacy)
   const partnerSharedTasks = tasks.filter(t => t.creatorId === partnerUser?.id && t.visibility === 'SHARED');
@@ -130,7 +129,7 @@ export function HomeView() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
       
-      {/* 1. Core Daily Lifecycle Stepper */}
+      {/* 1. Core Daily Lifecycle Stepper (Interactive Navigation) */}
       <div className="rounded-3xl border border-border bg-card p-4 sm:p-5 shadow-xs space-y-3">
         <div className="flex items-center justify-between text-xs">
           <span className="font-bold text-foreground uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -144,18 +143,33 @@ export function HomeView() {
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar">
           {LIFECYCLE_STEPS.map((step, idx) => {
             const Icon = step.icon;
+            const handleStepClick = () => {
+              if (step.id === 'WAKE' || step.id === 'CHECKIN') setActiveView('TRACK');
+              else if (step.id === 'PLAN') setActiveView('MY_DAY');
+              else if (step.id === 'TASKS') setActiveView('TASKS');
+              else if (step.id === 'STUDY') setActiveView('STUDY');
+              else if (step.id === 'FOOD') setActiveView('FOOD');
+              else if (step.id === 'WATER') { addWater(250); }
+              else if (step.id === 'WORKOUT') setActiveView('WORKOUT');
+              else if (step.id === 'EVENING') setActiveView('TIMELINE');
+              else if (step.id === 'TOMORROW') setActiveView('MY_DAY');
+            };
+
             return (
               <React.Fragment key={step.id}>
-                <div
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all ${
+                <button
+                  type="button"
+                  onClick={handleStepClick}
+                  title={`Go to ${step.label}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all cursor-pointer hover:scale-105 active:scale-95 ${
                     step.done
-                      ? 'bg-primary/10 text-primary border border-primary/20'
-                      : 'bg-secondary/40 text-muted-foreground'
+                      ? 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20'
+                      : 'bg-secondary/40 text-muted-foreground hover:text-foreground hover:bg-secondary/70'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
                   <span>{step.label}</span>
-                </div>
+                </button>
                 {idx < LIFECYCLE_STEPS.length - 1 && (
                   <ArrowRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />
                 )}

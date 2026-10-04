@@ -15,7 +15,21 @@ import {
   Plus,
   Zap,
   Activity,
-  UserCheck
+  UserCheck,
+  Bell,
+  Menu,
+  X,
+  CheckSquare,
+  Dumbbell,
+  Utensils,
+  GraduationCap,
+  Flame,
+  Target,
+  Camera,
+  CalendarDays,
+  Settings as SettingsIcon,
+  FolderLock,
+  Bot
 } from 'lucide-react';
 
 const ACCENT_COLORS = [
@@ -40,11 +54,60 @@ export function Navbar() {
   
   const [copied, setCopied] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsList, setNotificationsList] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const loadNotifications = async () => {
+    try {
+      const res = await fetch(`/api/notifications?userId=${currentUser.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotificationsList(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id })
+      });
+      loadNotifications();
+    } catch {
+      // ignore
+    }
+  };
+
+  React.useEffect(() => {
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [currentUser.id]);
 
   const copyInviteCode = () => {
-    navigator.clipboard.writeText(currentSpace.inviteCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(currentSpace.inviteCode).catch(() => {});
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = currentSpace.inviteCode;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+    }
   };
 
   return (
@@ -152,6 +215,68 @@ export function Navbar() {
             )}
           </div>
 
+          {/* Notification Center Popover (Requirement 22) */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowNotifications(!showNotifications);
+                if (!showNotifications) loadNotifications();
+              }}
+              title="Notification Center"
+              className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 hover:bg-muted/50 transition-colors"
+            >
+              <Bell className="h-4 w-4 text-foreground" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[9px] font-extrabold flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-border bg-card p-4 shadow-2xl z-50 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                    <Bell className="h-3.5 w-3.5 text-primary" />
+                    <span>Notifications</span>
+                    {unreadCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-primary/10 text-primary">
+                        {unreadCount} unread
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={markAllRead}
+                    className="text-[10px] font-semibold text-primary hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                  {notificationsList.length === 0 ? (
+                    <p className="text-center text-xs text-muted-foreground py-4">No notifications yet.</p>
+                  ) : (
+                    notificationsList.map(notif => (
+                      <div
+                        key={notif.id}
+                        className={`p-2.5 rounded-xl border text-xs space-y-0.5 transition-colors ${
+                          notif.is_read ? 'border-border/40 bg-secondary/20 opacity-70' : 'border-primary/30 bg-primary/5'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-foreground truncate">{notif.title}</span>
+                          {!notif.is_read && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-2">{notif.body}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Dark / Light / System Mode Toggle */}
           <div className="flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5">
             <button
@@ -174,9 +299,71 @@ export function Navbar() {
             </button>
           </div>
 
+          {/* Mobile All-Sections Drawer Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 hover:bg-muted/50 text-foreground transition-colors"
+            title="All Sections Menu"
+            aria-label="Toggle All Sections Menu"
+          >
+            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
+
         </div>
 
       </div>
+
+      {/* Mobile All-Sections Full Navigation Drawer */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-x-0 top-16 bottom-0 z-50 bg-background/95 backdrop-blur-xl border-t border-border overflow-y-auto p-4 space-y-4 animate-in slide-in-from-top-2">
+          <div className="flex items-center justify-between pb-2 border-b border-border/60">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">All LIFE OS Sections</span>
+            <span className="text-[11px] font-semibold text-primary">{currentUser.name}&apos;s Workspace</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {[
+              { id: 'HOME', label: 'Home Dashboard', icon: Heart },
+              { id: 'TASKS', label: 'Tasks & Proof', icon: CheckSquare },
+              { id: 'STUDY', label: 'Study & Exams', icon: GraduationCap },
+              { id: 'WORKOUT', label: 'Workouts', icon: Dumbbell },
+              { id: 'FOOD', label: 'Food & Meals', icon: Utensils },
+              { id: 'TRACK', label: 'Track & Wellness', icon: Activity },
+              { id: 'HABITS', label: 'Habits Tracker', icon: Flame },
+              { id: 'GOALS', label: 'Goals (Me & Us)', icon: Target },
+              { id: 'GALLERY', label: 'Photo Gallery', icon: Camera },
+              { id: 'CALENDAR', label: 'Shared Calendar', icon: CalendarDays },
+              { id: 'LIFE_ADMIN', label: 'Life Admin', icon: FolderLock },
+              { id: 'AI_COACH', label: 'AI Life Coach', icon: Bot },
+              { id: 'SETTINGS', label: 'Settings & Privacy', icon: SettingsIcon },
+            ].map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveView(item.id);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2.5 p-3 rounded-2xl border border-border/60 bg-card hover:bg-primary/10 hover:border-primary/40 text-left transition-all font-semibold text-foreground active:scale-95"
+                >
+                  <Icon className="h-4 w-4 text-primary shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick Space & Partner Info */}
+          <div className="p-3 rounded-2xl bg-secondary/30 border border-border/50 text-[11px] text-muted-foreground space-y-1">
+            <div className="flex justify-between font-bold text-foreground">
+              <span>Space Code: {currentSpace.inviteCode}</span>
+              <span className="text-emerald-500">Private 2-Person</span>
+            </div>
+            <p>Sharing space with {partnerUser ? partnerUser.name : 'Partner'}. All activities isolated.</p>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

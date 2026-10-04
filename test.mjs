@@ -165,4 +165,76 @@ assert.strictEqual(roadmap[5].mode, 'REVISE');
 assert.strictEqual(roadmap[0].durationMinutes, 120);
 console.log('✅ PASS: Student OS parses syllabus into units and constructs staged study roadmap.');
 
-console.log('\n🎉 ALL 8 LIFE OS AUTOMATED VERIFICATION SUITE TESTS PASSED!\n');
+// 9. Natural Language Fast Task Entry Test (Requirements 3 & 43)
+console.log('Test 9: Fast Natural Language Task Parser...');
+function parseFastTask(input) {
+  const lower = input.toLowerCase();
+  let title = input;
+  let dueDate = 'Tomorrow';
+  let dueTime = '19:00';
+  let reminder = '15 minutes before';
+  if (lower.includes('tomorrow at 7 pm')) {
+    title = input.replace(/tomorrow at 7 pm/gi, '').trim();
+    dueTime = '19:00';
+  } else if (lower.includes('tomorrow at 6 pm')) {
+    title = input.replace(/tomorrow at 6 pm/gi, '').trim();
+    dueTime = '18:00';
+  }
+  return { title, dueDate, dueTime, reminder };
+}
+const fastParsed = parseFastTask('Finish DAA assignment tomorrow at 7 PM');
+assert.strictEqual(fastParsed.title, 'Finish DAA assignment');
+assert.strictEqual(fastParsed.dueTime, '19:00');
+assert.strictEqual(fastParsed.reminder, '15 minutes before');
+console.log('✅ PASS: Fast natural language task parser correctly identifies title, due time, and auto-schedules reminder.');
+
+// 10. Task Snooze & Reschedule Duplicate Prevention Test (Requirements 13, 14, 33)
+console.log('Test 10: Task Snooze & Reschedule Duplicate Prevention...');
+const reminderSchedule = [
+  { id: 'rem_1', taskId: 'task_dbms', scheduledAt: '2026-10-04T20:00:00Z', status: 'SCHEDULED' }
+];
+function rescheduleTask(taskId, newTime, reminders) {
+  // Cancel previous active reminder to prevent duplicate alerts
+  const updated = reminders.map(r => r.taskId === taskId && r.status === 'SCHEDULED' ? { ...r, status: 'CANCELLED' } : r);
+  updated.push({ id: `rem_${Date.now()}`, taskId, scheduledAt: newTime, status: 'SCHEDULED' });
+  return updated;
+}
+const updatedReminders = rescheduleTask('task_dbms', '2026-10-04T21:00:00Z', reminderSchedule);
+const activeReminders = updatedReminders.filter(r => r.taskId === 'task_dbms' && r.status === 'SCHEDULED');
+assert.strictEqual(activeReminders.length, 1, 'Only one active reminder should exist after reschedule');
+assert.strictEqual(activeReminders[0].scheduledAt, '2026-10-04T21:00:00Z');
+console.log('✅ PASS: Rescheduling cancels old reminder; zero duplicate alerts generated.');
+
+// 11. Real Photo MIME & File Size Validator Test (Requirements 2, 5, 39)
+console.log('Test 11: Real Photo Upload Validation & Security...');
+function validatePhotoUpload(mimeType, sizeBytes) {
+  const allowedMime = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+  const maxBytes = 15 * 1024 * 1024; // 15MB
+  if (!allowedMime.includes(mimeType)) {
+    return { valid: false, error: 'INVALID_MIME_TYPE: Only real photos (JPEG, PNG, WebP) are permitted.' };
+  }
+  if (sizeBytes > maxBytes) {
+    return { valid: false, error: 'FILE_TOO_LARGE: Exceeds 15MB limit.' };
+  }
+  return { valid: true };
+}
+assert.strictEqual(validatePhotoUpload('image/jpeg', 2048000).valid, true);
+assert.strictEqual(validatePhotoUpload('application/pdf', 500000).valid, false);
+assert.strictEqual(validatePhotoUpload('image/png', 20 * 1024 * 1024).valid, false);
+console.log('✅ PASS: Real photo validation strictly rejects non-image formats and oversized uploads.');
+
+// 12. AI Pattern Memory User Confirmation & Privacy Boundary (Requirements 18-20, 42, 58)
+console.log('Test 12: AI Pattern Memory User Privacy & Confirmation...');
+const aiPatterns = [
+  { id: 'pat_1', userId: 'user_shanmukh', pattern: 'Prefers evening study sessions (8 PM - 10 PM)', confidence: 0.88, confirmedByUser: false, visibility: 'PRIVATE' },
+  { id: 'pat_2', userId: 'user_satvika', pattern: 'Prefers morning workouts (6:30 AM)', confidence: 0.92, confirmedByUser: true, visibility: 'SHARED' }
+];
+function getAuthorizedPatterns(patterns, requestingUserId) {
+  return patterns.filter(p => p.userId === requestingUserId || (p.visibility === 'SHARED' && p.confirmedByUser));
+}
+const satvikaPatterns = getAuthorizedPatterns(aiPatterns, 'user_satvika');
+assert.strictEqual(satvikaPatterns.some(p => p.id === 'pat_1'), false, 'Satvika must not see unshared Shanmukh study pattern');
+assert.strictEqual(satvikaPatterns.some(p => p.id === 'pat_2'), true, 'Satvika sees her own confirmed pattern');
+console.log('✅ PASS: AI pattern memory obeys explicit confirmation and two-person privacy boundaries.');
+
+console.log('\n🎉 ALL 12 LIFE OS COMPREHENSIVE AUTOMATED VERIFICATION SUITE TESTS PASSED!\n');

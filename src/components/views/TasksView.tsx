@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useLifeOS } from '@/lib/store';
 import { TaskItem, TaskCategory, Priority, TaskRecurrence, Visibility } from '@/types';
 import { AIService, RescueScheduleResult } from '@/lib/ai-service';
+import { parseNaturalLanguageTask, ParsedTaskResult } from '@/lib/task-parser';
+import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import {
   CheckSquare,
   Plus,
@@ -23,7 +25,11 @@ import {
   Link as LinkIcon,
   RotateCcw,
   Sparkles,
-  Layers
+  Layers,
+  ArrowRight,
+  Bell,
+  MoreVertical,
+  CalendarDays
 } from 'lucide-react';
 
 const CATEGORIES: TaskCategory[] = [
@@ -49,6 +55,8 @@ export function TasksView() {
     trashTasks,
     addTask,
     toggleTask,
+    snoozeTask,
+    rescheduleTask,
     deleteTask,
     restoreTask,
     toggleTaskSubtask,
@@ -59,10 +67,19 @@ export function TasksView() {
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState<TaskItem | null>(null);
-  const [proofImageInput, setProofImageInput] = useState('');
+  const [realProofUrl, setRealProofUrl] = useState<string>('');
   const [rescueResult, setRescueResult] = useState<RescueScheduleResult | null>(null);
 
-  // New task form state
+  // Fast Natural Language Entry
+  const [quickInput, setQuickInput] = useState('');
+  const [parsedPreview, setParsedPreview] = useState<ParsedTaskResult | null>(null);
+
+  // Reschedule Modal state
+  const [rescheduleModalTask, setRescheduleModalTask] = useState<TaskItem | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [rescheduleTime, setRescheduleTime] = useState('17:00');
+
+  // Full Task Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory>('Study');
@@ -70,11 +87,46 @@ export function TasksView() {
   const [visibility, setVisibility] = useState<Visibility>('PRIVATE');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueTime, setDueTime] = useState('17:00');
+  const [reminderOption, setReminderOption] = useState<string>('15_MIN');
   const [recurrence, setRecurrence] = useState<TaskRecurrence>('NONE');
   const [estimatedMinutes, setEstimatedMinutes] = useState(30);
   const [proofRequired, setProofRequired] = useState(false);
   const [assignedToId, setAssignedToId] = useState(currentUser.id);
   const [dependsOnTaskId, setDependsOnTaskId] = useState<string>('');
+
+  // Handle Quick Input Parsing
+  const handleQuickInputChange = (val: string) => {
+    setQuickInput(val);
+    if (val.trim().length > 5) {
+      const parsed = parseNaturalLanguageTask(val);
+      setParsedPreview(parsed);
+    } else {
+      setParsedPreview(null);
+    }
+  };
+
+  const handleSaveQuickTask = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!parsedPreview || !parsedPreview.title.trim()) return;
+
+    addTask({
+      title: parsedPreview.title,
+      description: 'Quick entry via natural language parser',
+      category: parsedPreview.category,
+      priority: parsedPreview.priority,
+      visibility: 'PRIVATE',
+      status: 'TODO',
+      dueDate: parsedPreview.dueDate,
+      dueTime: parsedPreview.dueTime,
+      recurrence: 'NONE',
+      estimatedMinutes: 30,
+      proofRequired: false,
+      assignedToId: currentUser.id
+    });
+
+    setQuickInput('');
+    setParsedPreview(null);
+  };
 
   // Task filtering
   const filteredTasks = activeFilter === 'TRASH' ? trashTasks : tasks.filter(task => {
@@ -126,7 +178,6 @@ export function TasksView() {
   };
 
   const handleTaskClick = (task: TaskItem) => {
-    // Check dependency
     if (task.dependsOnTaskId) {
       const parent = tasks.find(t => t.id === task.dependsOnTaskId);
       if (parent && parent.status !== 'COMPLETED') {
@@ -136,6 +187,7 @@ export function TasksView() {
     }
 
     if (task.status !== 'COMPLETED' && task.proofRequired && !task.proof) {
+      setRealProofUrl('');
       setShowProofModal(task);
     } else {
       toggleTask(task.id);
@@ -144,14 +196,17 @@ export function TasksView() {
 
   const submitProofCompletion = () => {
     if (!showProofModal) return;
-    const proofUrl = proofImageInput.trim() || 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=500&auto=format&fit=crop&q=80';
-    const res = toggleTask(showProofModal.id, proofUrl);
+    if (!realProofUrl) {
+      alert('⚠️ Authentic photo proof is required to complete this task. Please take a photo or select one from your gallery.');
+      return;
+    }
+    const res = toggleTask(showProofModal.id, realProofUrl);
     if (!res.success && res.error === 'PROOF_REQUIRED') {
-      alert('⚠️ Photo proof is required to complete this task. Please provide a photo.');
+      alert('⚠️ Photo proof is required to complete this task.');
       return;
     }
     setShowProofModal(null);
-    setProofImageInput('');
+    setRealProofUrl('');
   };
 
   const handleRescueMyDay = () => {
@@ -159,15 +214,25 @@ export function TasksView() {
     setRescueResult(result);
   };
 
+  const handleSaveReschedule = () => {
+    if (!rescheduleModalTask) return;
+    rescheduleTask(rescheduleModalTask.id, rescheduleDate, rescheduleTime);
+    setRescheduleModalTask(null);
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
       
-      {/* Top Header & Rescue My Day CTA */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl bg-card border border-border">
+      {/* Top Header & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl bg-card border border-border shadow-xs">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Task & Dependency Management</h1>
+          <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
+            <CheckSquare className="h-4 w-4" />
+            <span>Persistent Task & Execution Engine</span>
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight mt-1">Tasks, Schedule & Real Reminders</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Organize personal & shared action items with photo proof, dependencies & smart rescheduling.
+            Instant SQLite persistence, natural language entry, active reminders, dependencies, and real photo proof.
           </p>
         </div>
 
@@ -185,9 +250,64 @@ export function TasksView() {
             className="flex items-center gap-1.5 rounded-2xl bg-primary text-primary-foreground px-4 py-2 text-xs font-bold shadow-md shadow-primary/25 hover:opacity-95 transition-all"
           >
             <Plus className="h-4 w-4" />
-            <span>New Task</span>
+            <span>Detailed Task</span>
           </button>
         </div>
+      </div>
+
+      {/* FAST NATURAL LANGUAGE TASK ENTRY BAR (Requirement 3) */}
+      <div className="p-4 rounded-3xl border border-primary/20 bg-card shadow-xs space-y-2">
+        <form onSubmit={handleSaveQuickTask} className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Fast task entry: 'Complete DBMS assignment tomorrow at 6 PM' or 'Workout Saturday at 10 AM'..."
+              value={quickInput}
+              onChange={(e) => handleQuickInputChange(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border border-border bg-background text-xs sm:text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary font-medium"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={!quickInput.trim()}
+            className="px-5 py-3 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-sm hover:opacity-95 disabled:opacity-40 transition-all shrink-0 flex items-center justify-center gap-1.5"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>Save Task</span>
+          </button>
+        </form>
+
+        {/* Live Interpretation Preview */}
+        {parsedPreview && (
+          <div className="p-3 rounded-2xl bg-primary/5 border border-primary/20 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-primary flex items-center gap-1">
+                <Bell className="h-3.5 w-3.5" /> Understood as:
+              </span>
+              <span className="text-foreground font-semibold">&ldquo;{parsedPreview.title}&rdquo;</span>
+              <span className="text-muted-foreground">&bull; {parsedPreview.interpretedText}</span>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setTitle(parsedPreview.title);
+                  setDueDate(parsedPreview.dueDate);
+                  setDueTime(parsedPreview.dueTime);
+                  setCategory(parsedPreview.category);
+                  setPriority(parsedPreview.priority);
+                  setReminderOption(parsedPreview.reminderOption);
+                  setShowAddModal(true);
+                }}
+                className="text-[11px] font-bold text-muted-foreground hover:text-foreground underline"
+              >
+                Edit in Full Form
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Rescue My Day Banner if Triggered */}
@@ -231,34 +351,34 @@ export function TasksView() {
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center rounded-xl bg-muted/60 p-1 text-xs font-semibold">
+        <div className="flex items-center rounded-2xl bg-muted/60 p-1 text-xs font-semibold">
           <button
             onClick={() => setActiveFilter('ALL')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${activeFilter === 'ALL' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
+            className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'ALL' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
             All Tasks
           </button>
           <button
             onClick={() => setActiveFilter('MINE')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${activeFilter === 'MINE' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
+            className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'MINE' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
             My Private
           </button>
           <button
             onClick={() => setActiveFilter('SHARED')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${activeFilter === 'SHARED' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
+            className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'SHARED' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
             Shared
           </button>
           <button
             onClick={() => setActiveFilter('COMPLETED')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${activeFilter === 'COMPLETED' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
+            className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'COMPLETED' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
             Completed
           </button>
           <button
             onClick={() => setActiveFilter('TRASH')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${activeFilter === 'TRASH' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
+            className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'TRASH' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
             Trash Recovery ({trashTasks.length})
           </button>
@@ -269,7 +389,7 @@ export function TasksView() {
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           aria-label="Filter tasks by category"
-          className="rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground"
+          className="rounded-2xl border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground"
         >
           <option value="ALL">All Categories</option>
           {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -279,26 +399,44 @@ export function TasksView() {
       {/* Tasks List */}
       <div className="space-y-3">
         {filteredTasks.length === 0 ? (
-          <div className="text-center p-12 rounded-3xl border border-border bg-card">
-            <CheckSquare className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-50" />
-            <h3 className="text-base font-bold">No tasks in this view</h3>
-            <p className="text-xs text-muted-foreground mt-1">Create your first task or choose another filter category.</p>
+          /* Beautiful welcoming empty state (Requirements 13 & 14) */
+          <div className="text-center p-12 rounded-3xl border border-dashed border-border bg-card/60 space-y-3">
+            <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+              <CheckSquare className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-bold text-foreground">Nothing planned yet</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              Add your first task and we&apos;ll help you organize your day with real reminders and zero stress.
+            </p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="mt-2 px-5 py-2.5 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-md shadow-primary/20 hover:opacity-95"
+            >
+              + Add First Task
+            </button>
           </div>
         ) : (
           filteredTasks.map((task) => {
             const isDone = task.status === 'COMPLETED';
             const parentTask = task.dependsOnTaskId ? tasks.find(t => t.id === task.dependsOnTaskId) : null;
 
+            // Overdue calculation (Requirement 12)
+            const isOverdue = !isDone && task.dueDate && (
+              new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`) < new Date()
+            );
+
             return (
               <div
                 key={task.id}
-                className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all gap-3 ${
+                className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-3xl border transition-all gap-3 ${
                   isDone
                     ? 'border-border/40 bg-card/40 opacity-70'
-                    : 'border-border bg-card hover:border-primary/40 shadow-2xs'
+                    : isOverdue
+                      ? 'border-amber-500/50 bg-amber-500/5 hover:border-amber-500 shadow-xs'
+                      : 'border-border bg-card hover:border-primary/40 shadow-xs'
                 }`}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
                   <button
                     onClick={() => handleTaskClick(task)}
                     className="mt-0.5 text-muted-foreground hover:text-primary transition-colors shrink-0"
@@ -310,10 +448,19 @@ export function TasksView() {
                     )}
                   </button>
 
-                  <div className="space-y-1">
-                    <p className={`text-sm font-semibold ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                      {task.title}
-                    </p>
+                  <div className="space-y-1 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className={`text-sm font-semibold truncate ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                        {task.title}
+                      </p>
+
+                      {isOverdue && (
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                          OVERDUE
+                        </span>
+                      )}
+                    </div>
+
                     {task.description && (
                       <p className="text-xs text-muted-foreground line-clamp-1">{task.description}</p>
                     )}
@@ -342,67 +489,86 @@ export function TasksView() {
                       </div>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground">
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                      <span className="font-bold px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground">
                         {task.category}
                       </span>
 
                       {task.priority === 'MUST_DO' && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                          MUST DO
+                        <span className="font-bold px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                          Must Do
                         </span>
                       )}
 
-                      {task.dueTime && (
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" /> {task.dueTime}
-                        </span>
-                      )}
-
-                      {task.visibility === 'SHARED' ? (
-                        <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                          Shared
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                          Private
+                      {task.dueDate && (
+                        <span className="text-muted-foreground flex items-center gap-1 font-mono">
+                          <Calendar className="h-3 w-3" />
+                          {task.dueDate} {task.dueTime}
                         </span>
                       )}
 
                       {task.proofRequired && (
-                        <span className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md flex items-center gap-1">
-                          <Camera className="h-3 w-3" /> Proof {task.proof ? 'Verified' : 'Required'}
+                        <span className="flex items-center gap-1 font-bold text-primary">
+                          <Camera className="h-3 w-3" /> Proof Required
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Right side: Photo proof thumbnail and actions */}
-                <div className="flex items-center gap-3 self-end sm:self-center">
+                {/* Right Actions & Reminders Controls */}
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  {/* Snooze & Reschedule Quick Action Chips */}
+                  {!isDone && (
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => snoozeTask(task.id, 10)}
+                        className="px-2 py-1 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground font-semibold"
+                        title="Snooze 10 minutes"
+                      >
+                        +10m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => snoozeTask(task.id, 30)}
+                        className="px-2 py-1 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground font-semibold"
+                        title="Snooze 30 minutes"
+                      >
+                        +30m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRescheduleModalTask(task);
+                          setRescheduleDate(task.dueDate || new Date().toISOString().split('T')[0]);
+                          setRescheduleTime(task.dueTime || '17:00');
+                        }}
+                        className="px-2 py-1 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground font-semibold flex items-center gap-1"
+                        title="Reschedule Date & Time"
+                      >
+                        <CalendarDays className="h-3 w-3" />
+                        <span>Reschedule</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Task Proof Preview if exists */}
                   {task.proof && (
                     <div
-                      onClick={() => openLightbox({ 
-                        url: task.proof!.imageUrl, 
-                        title: task.title, 
-                        timestamp: task.proof!.timestamp, 
+                      onClick={() => openLightbox({
+                        url: task.proof!.imageUrl,
+                        title: `Proof: ${task.title}`,
+                        timestamp: task.proof!.timestamp,
                         taskId: task.id,
                         aiVerification: task.proof!.aiVerification
                       })}
-                      className="relative cursor-pointer group shrink-0"
-                      title="Click to view AI-verified proof breakdown"
+                      className="relative h-10 w-10 shrink-0 rounded-xl overflow-hidden border-2 border-emerald-500 cursor-pointer shadow-xs group bg-muted/40"
+                      title="Click to view full photo proof"
                     >
-                      <img
-                        src={task.proof.imageUrl}
-                        alt="Proof"
-                        className="h-12 w-12 rounded-xl object-cover border-2 border-emerald-500/60 shadow-xs group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
-                        <Sparkles className="h-2.5 w-2.5" />
-                      </div>
-                      <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[9px] font-bold">
-                        <span>AI Proof</span>
-                        <span>{task.proof.aiVerification?.confidence ? `${task.proof.aiVerification.confidence.toFixed(0)}%` : 'View'}</span>
+                      <img src={task.proof.imageUrl} alt="" className="h-full w-full object-cover" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-bold transition-opacity">
+                        View
                       </div>
                     </div>
                   )}
@@ -430,10 +596,67 @@ export function TasksView() {
         )}
       </div>
 
-      {/* Add Task Modal */}
+      {/* Reschedule Modal (Requirement 14) */}
+      {rescheduleModalTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-border/60">
+              <h3 className="text-base font-bold text-foreground">Reschedule Task</h3>
+              <button onClick={() => setRescheduleModalTask(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Reschedule <strong className="text-foreground">{rescheduleModalTask.title}</strong>. Old reminders will be cancelled and updated automatically.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-foreground">New Due Date</label>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-foreground">New Due Time</label>
+                <input
+                  type="time"
+                  value={rescheduleTime}
+                  onChange={(e) => setRescheduleTime(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalTask(null)}
+                  className="px-4 py-2 rounded-xl border border-border text-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveReschedule}
+                  className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-sm"
+                >
+                  Save Reschedule
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Task Modal with All Fields (Requirement 4) */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4 my-8">
             <div className="flex items-center justify-between pb-2 border-b border-border/60">
               <h3 className="text-base font-bold text-foreground">Create New Task</h3>
               <button onClick={() => setShowAddModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -450,7 +673,7 @@ export function TasksView() {
                   placeholder="e.g. Finish kinematic Jacobians derivation"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
+                  className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
                 />
               </div>
 
@@ -463,6 +686,27 @@ export function TasksView() {
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-foreground">Date</label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-foreground">Time</label>
+                  <input
+                    type="time"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -494,6 +738,41 @@ export function TasksView() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="font-semibold text-foreground">Reminder Notification</label>
+                  <select
+                    value={reminderOption}
+                    onChange={(e) => setReminderOption(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
+                  >
+                    <option value="NONE">None</option>
+                    <option value="AT_TIME">At task time</option>
+                    <option value="5_MIN">5 minutes before</option>
+                    <option value="15_MIN">15 minutes before</option>
+                    <option value="30_MIN">30 minutes before</option>
+                    <option value="1_HOUR">1 hour before</option>
+                    <option value="1_DAY">1 day before</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-foreground">Repeat Schedule</label>
+                  <select
+                    value={recurrence}
+                    onChange={(e) => setRecurrence(e.target.value as TaskRecurrence)}
+                    className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
+                  >
+                    <option value="NONE">None</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKDAYS">Weekdays (Mon-Fri)</option>
+                    <option value="WEEKENDS">Weekends</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="font-semibold text-foreground">Task Dependency (Must complete first)</label>
                   <select
                     value={dependsOnTaskId}
@@ -514,7 +793,7 @@ export function TasksView() {
                     onChange={(e) => setVisibility(e.target.value as Visibility)}
                     className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground"
                   >
-                    <option value="PRIVATE">Private</option>
+                    <option value="PRIVATE">Private (You Only)</option>
                     <option value="SHARED">Shared with Partner</option>
                   </select>
                 </div>
@@ -529,7 +808,7 @@ export function TasksView() {
                   className="rounded-sm"
                 />
                 <label htmlFor="proofRequiredCheck" className="font-semibold text-foreground cursor-pointer">
-                  Require Photo Proof upon completion
+                  Require Photo Proof upon completion (Authentic Camera/Gallery upload required)
                 </label>
               </div>
 
@@ -543,9 +822,9 @@ export function TasksView() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 hover:opacity-95"
+                  className="px-5 py-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 hover:opacity-95"
                 >
-                  Create Task
+                  Create & Persist Task
                 </button>
               </div>
             </form>
@@ -553,7 +832,7 @@ export function TasksView() {
         </div>
       )}
 
-      {/* Photo Proof Modal with AI Multimodal Verification */}
+      {/* REAL PHOTO PROOF MODAL (Requirements 2, 3, 20) */}
       {showProofModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4">
@@ -563,10 +842,8 @@ export function TasksView() {
                   <Camera className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-foreground">AI Photo Verification</h3>
-                  <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" /> LifeOS Multimodal Vision Engine
-                  </span>
+                  <h3 className="text-base font-bold text-foreground">Attach Authentic Proof</h3>
+                  <span className="text-[10px] text-muted-foreground">Real camera photo or gallery upload only</span>
                 </div>
               </div>
               <button onClick={() => setShowProofModal(null)} className="text-muted-foreground hover:text-foreground">
@@ -578,82 +855,39 @@ export function TasksView() {
               Verifying completion for: <span className="font-semibold text-foreground">{showProofModal.title}</span>
             </p>
 
-            <div className="space-y-3">
-              {/* Quick Preset Camera Captures */}
-              <div>
-                <label className="text-[11px] font-bold text-muted-foreground uppercase block mb-1">
-                  Quick Simulated Camera Captures:
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setProofImageInput('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=80')}
-                    className="p-2 rounded-xl border border-border bg-muted/50 hover:bg-muted text-[10px] font-medium text-foreground text-center"
-                  >
-                    📚 Study Notes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setProofImageInput('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500&auto=format&fit=crop&q=80')}
-                    className="p-2 rounded-xl border border-border bg-muted/50 hover:bg-muted text-[10px] font-medium text-foreground text-center"
-                  >
-                    🏋️ Gym / Weights
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setProofImageInput('https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80')}
-                    className="p-2 rounded-xl border border-border bg-muted/50 hover:bg-muted text-[10px] font-medium text-foreground text-center"
-                  >
-                    🥗 Meal / Prep
-                  </button>
-                </div>
-              </div>
+            {/* REAL USER PHOTO PICKER (Camera or Gallery) */}
+            <PhotoPicker
+              label="Task Completion Evidence"
+              required={true}
+              parentType="TASK_PROOF"
+              parentId={showProofModal.id}
+              visibility={showProofModal.visibility}
+              ownerId={currentUser.id}
+              onPhotoSelected={(url) => setRealProofUrl(url)}
+              onPhotoRemoved={() => setRealProofUrl('')}
+            />
 
-              <div>
-                <label className="text-xs font-semibold text-foreground">Or Enter Custom Image URL / Camera Frame</label>
-                <input
-                  type="text"
-                  placeholder="https://... image URL"
-                  value={proofImageInput}
-                  onChange={(e) => setProofImageInput(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground"
-                />
-              </div>
+            <div className="flex items-center justify-between pt-2 border-t border-border/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProofModal(null);
+                  setRealProofUrl('');
+                }}
+                className="text-xs font-semibold text-muted-foreground hover:underline"
+              >
+                Cancel (Leave Incomplete)
+              </button>
 
-              {proofImageInput && (
-                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <img src={proofImageInput} alt="Preview" className="h-10 w-10 rounded-lg object-cover" />
-                    <div>
-                      <span className="font-bold text-emerald-600 dark:text-emerald-400 block">Frame Ready for Audit</span>
-                      <span className="text-[10px] text-muted-foreground">Vision integrity check: PASS (98%+)</span>
-                    </div>
-                  </div>
-                  <Sparkles className="h-4 w-4 text-emerald-500" />
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowProofModal(null);
-                    setProofImageInput('');
-                  }}
-                  className="text-xs font-semibold text-muted-foreground hover:underline"
-                >
-                  Cancel (Leave Incomplete)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={submitProofCompletion}
-                  className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 flex items-center gap-1.5 hover:opacity-95"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Verify with AI & Finish</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={!realProofUrl}
+                onClick={submitProofCompletion}
+                className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 flex items-center gap-1.5 hover:opacity-95 disabled:opacity-40"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Verify & Complete Task</span>
+              </button>
             </div>
           </div>
         </div>

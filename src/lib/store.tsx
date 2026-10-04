@@ -66,6 +66,7 @@ import {
 } from './mock-data';
 import { generateId } from './utils';
 import { AIService } from './ai-service';
+import { reminderEngine } from './reminder-engine';
 
 export interface LightboxData {
   url: string;
@@ -140,11 +141,22 @@ interface LifeOSContextType {
   // Task Actions
   addTask: (task: Omit<TaskItem, 'id' | 'spaceId' | 'creatorId' | 'createdAt' | 'updatedAt'>) => void;
   toggleTask: (taskId: string, proofImg?: string) => { success: boolean; error?: string };
+  snoozeTask: (taskId: string, minutes: number) => void;
+  rescheduleTask: (taskId: string, newDate: string, newTime?: string) => void;
   deleteTask: (taskId: string) => void;
   restoreTask: (taskId: string) => void;
   deleteTaskProof: (taskId: string) => void;
   replaceTaskProof: (taskId: string, newUrl: string) => void;
   toggleTaskSubtask: (taskId: string, subtaskId: string) => void;
+  // Clean Mode & Real Life Toggle
+  isCleanMode: boolean;
+  setIsCleanMode: (clean: boolean) => void;
+  loadDemoData: () => void;
+  resetToCleanSlate: () => void;
+  // Active Reminder Notifications
+  activeReminderAlert: any;
+  dismissReminderAlert: () => void;
+  requestNotificationPermission: () => Promise<NotificationPermission>;
   // Habit Actions
   toggleHabit: (habitId: string) => void;
   addHabit: (title: string, category: string, frequency: Habit['frequency']) => void;
@@ -230,6 +242,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [specialMode, setSpecialMode] = useState<SpecialMode>('NORMAL');
   const [todaysTopThree, setTodaysTopThree] = useState<string[]>(['task_1', 'task_2', 'task_4']);
   const [oneThingId, setOneThingId] = useState<string | null>('task_1');
+
+  // Clean Mode (Real Life vs Demo Data) & Reminders
+  const [isCleanMode, setIsCleanMode] = useState<boolean>(false);
+  const [activeReminderAlert, setActiveReminderAlert] = useState<any>(null);
 
   // Lightbox
   const [lightbox, setLightbox] = useState<LightboxData | null>(null);
@@ -377,17 +393,75 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const addTask = (taskData: Omit<TaskItem, 'id' | 'spaceId' | 'creatorId' | 'createdAt' | 'updatedAt'>) => {
+  // Sync with persistent SQLite database on mount or user/space change
+  useEffect(() => {
+    let isMounted = true;
+    async function loadDbTasks() {
+      try {
+        const res = await fetch(`/api/tasks?spaceId=${currentSpace.id}&userId=${currentUser.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.tasks) && isMounted) {
+            if (data.tasks.length > 0) {
+              setTasks(data.tasks);
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback to memory
+      }
+    }
+    loadDbTasks();
+    return () => { isMounted = false; };
+  }, [currentSpace.id, currentUser.id]);
+
+  // Real Persistent Reminder Engine Listener
+  useEffect(() => {
+    reminderEngine.init();
+
+    const onReminder = (e: any) => {
+      if (e.detail) {
+        setActiveReminderAlert(e.detail);
+      }
+    };
+
+    window.addEventListener('lifeos:reminder_alert', onReminder);
+    return () => {
+      window.removeEventListener('lifeos:reminder_alert', onReminder);
+    };
+  }, []);
+
+  const dismissReminderAlert = () => setActiveReminderAlert(null);
+
+  const requestNotificationPermission = async () => {
+    return await reminderEngine.requestPermission();
+  };
+
+  // Immediate Persistent Task Creation
+  const addTask = async (taskData: Omit<TaskItem, 'id' | 'spaceId' | 'creatorId' | 'createdAt' | 'updatedAt'>) => {
+    const id = generateId('task');
     const newTask: TaskItem = {
       ...taskData,
-      id: generateId('task'),
+      id,
       spaceId: currentSpace.id,
       creatorId: currentUser.id,
       assignedToId: taskData.assignedToId || currentUser.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+    // 1. Optimistic instant React state
     setTasks(prev => [newTask, ...prev]);
+
+    // 2. Immediate SQLite database persistence
+    try {
+      await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTask)
+      });
+    } catch (e) {
+      console.error('Failed to persist task to SQLite DB:', e);
+    }
   };
 
   const toggleTask = (taskId: string, proofImg?: string): { success: boolean; error?: string } => {
@@ -395,19 +469,19 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     if (!target) return { success: false, error: 'TASK_NOT_FOUND' };
 
     const isCompleting = target.status !== 'COMPLETED';
-    // Part 14: IF proofRequired == true AND no proof exists/provided THEN reject completion with PROOF_REQUIRED
+    // Strict Part 14: IF proofRequired == true AND no proof exists/provided THEN reject completion with PROOF_REQUIRED
     if (isCompleting && target.proofRequired && !proofImg && !target.proof) {
       console.warn(`[Task Proof Policy] Rejected completion for "${target.title}": PROOF_REQUIRED.`);
       return { success: false, error: 'PROOF_REQUIRED' };
     }
 
+    const isDone = target.status === 'COMPLETED';
+    const aiVerification = proofImg 
+      ? AIService.verifyPhotoProof(target.category, target.title, proofImg) 
+      : undefined;
+
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
-        const isDone = t.status === 'COMPLETED';
-        const aiVerification = proofImg 
-          ? AIService.verifyPhotoProof(t.category, t.title, proofImg) 
-          : undefined;
-
         return {
           ...t,
           status: isDone ? 'TODO' : 'COMPLETED',
@@ -426,7 +500,58 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return t;
     }));
 
+    // Immediate DB synchronization
+    fetch('/api/tasks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'TOGGLE',
+        taskId,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        proofImg
+      })
+    }).catch(() => {});
+
     return { success: true };
+  };
+
+  // Snooze task & reschedule reminder
+  const snoozeTask = (taskId: string, minutes: number) => {
+    const target = tasks.find(t => t.id === taskId);
+    if (!target) return;
+
+    const snoozeTarget = new Date(Date.now() + minutes * 60 * 1000);
+    const newTime = snoozeTarget.toTimeString().substring(0, 5);
+    const newDate = snoozeTarget.toISOString().split('T')[0];
+
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime } : t));
+
+    fetch('/api/tasks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'SNOOZE',
+        taskId,
+        minutes
+      })
+    }).catch(() => {});
+  };
+
+  // Reschedule task date & time
+  const rescheduleTask = (taskId: string, newDate: string, newTime?: string) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime || t.dueTime } : t));
+
+    fetch('/api/tasks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'RESCHEDULE',
+        taskId,
+        newDate,
+        newTime
+      })
+    }).catch(() => {});
   };
 
   // Soft delete task to trash for recovery
@@ -435,6 +560,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     if (target) {
       setTrashTasks(prev => [{ ...target, deletedAt: new Date().toISOString() }, ...prev]);
       setTasks(prev => prev.filter(t => t.id !== taskId));
+
+      fetch(`/api/tasks?id=${taskId}`, { method: 'DELETE' }).catch(() => {});
     }
   };
 
@@ -443,7 +570,44 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     if (target) {
       setTrashTasks(prev => prev.filter(t => t.id !== taskId));
       setTasks(prev => [target, ...prev]);
+
+      fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESTORE', taskId })
+      }).catch(() => {});
     }
+  };
+
+  // Clean Mode (Requirements 13 & 14: NO Preloaded Fake Life for new user)
+  const resetToCleanSlate = () => {
+    setIsCleanMode(true);
+    setTasks([]);
+    setHabits([]);
+    setCheckins([]);
+    setStudySubjects([]);
+    setExams([]);
+    setGoals([]);
+    setMemories([]);
+    setMeals([]);
+    setWorkouts([]);
+    setShoppingItems([]);
+    setLifeAdminItems([]);
+    setTodaysTopThree([]);
+    setOneThingId(null);
+  };
+
+  const loadDemoData = () => {
+    setIsCleanMode(false);
+    setTasks(INITIAL_TASKS);
+    setHabits(INITIAL_HABITS);
+    setCheckins(INITIAL_CHECKINS);
+    setStudySubjects(INITIAL_STUDY_SUBJECTS);
+    setExams(INITIAL_EXAMS);
+    setGoals(INITIAL_GOALS);
+    setMemories(INITIAL_MEMORIES);
+    setShoppingItems(INITIAL_SHOPPING);
+    setLifeAdminItems(INITIAL_LIFE_ADMIN);
   };
 
   const deleteTaskProof = (taskId: string) => {
@@ -958,11 +1122,20 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         createSpace,
         addTask,
         toggleTask,
+        snoozeTask,
+        rescheduleTask,
         deleteTask,
         restoreTask,
         deleteTaskProof,
         replaceTaskProof,
         toggleTaskSubtask,
+        isCleanMode,
+        setIsCleanMode,
+        loadDemoData,
+        resetToCleanSlate,
+        activeReminderAlert,
+        dismissReminderAlert,
+        requestNotificationPermission,
         toggleHabit,
         addHabit,
         addWater,
@@ -1002,6 +1175,82 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+
+      {/* Real In-App Actionable Reminder Alert Banner */}
+      {activeReminderAlert && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-card border-2 border-primary/40 rounded-3xl p-5 shadow-2xl animate-in slide-in-from-bottom-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider">
+              <span className="flex h-2 w-2 rounded-full bg-primary animate-ping" />
+              <span>🔔 Due Now Reminder</span>
+            </div>
+            <button
+              onClick={dismissReminderAlert}
+              className="text-muted-foreground hover:text-foreground text-xs p-1"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mt-2 space-y-1">
+            <h4 className="text-sm font-extrabold text-foreground">
+              {activeReminderAlert.task_title || activeReminderAlert.title}
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              This task is scheduled for right now. What would you like to do?
+            </p>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 pt-1 border-t border-border/60">
+            {activeReminderAlert.task_id && (
+              <button
+                type="button"
+                onClick={() => {
+                  toggleTask(activeReminderAlert.task_id);
+                  dismissReminderAlert();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
+              >
+                Complete ✓
+              </button>
+            )}
+
+            {activeReminderAlert.task_id && (
+              <button
+                type="button"
+                onClick={() => {
+                  snoozeTask(activeReminderAlert.task_id, 10);
+                  dismissReminderAlert();
+                }}
+                className="px-3 py-1.5 rounded-xl border border-border bg-secondary hover:bg-muted font-bold text-xs text-foreground"
+              >
+                Snooze 10m
+              </button>
+            )}
+
+            {activeReminderAlert.task_id && (
+              <button
+                type="button"
+                onClick={() => {
+                  snoozeTask(activeReminderAlert.task_id, 30);
+                  dismissReminderAlert();
+                }}
+                className="px-3 py-1.5 rounded-xl border border-border bg-secondary hover:bg-muted font-bold text-xs text-foreground"
+              >
+                Snooze 30m
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={dismissReminderAlert}
+              className="px-3 py-1.5 rounded-xl text-muted-foreground hover:text-foreground font-semibold text-xs ml-auto"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
     </LifeOSContext.Provider>
   );
 }
