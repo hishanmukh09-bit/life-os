@@ -158,7 +158,7 @@ export function FinanceTravelView() {
                   ? `Satvika owes Shanmukh $${diff.toFixed(2)}`
                   : diff < 0
                   ? `Shanmukh owes Satvika $${Math.abs(diff).toFixed(2)}`
-                  : 'All shared expenses are settled! 🎉'}
+                  : 'All shared expenses are settled.'}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Total active shared spend: ${(totalPaidByShanmukh + totalPaidBySatvika).toFixed(2)}

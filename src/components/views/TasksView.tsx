@@ -84,7 +84,7 @@ export function TasksView() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory>('Study');
   const [priority, setPriority] = useState<Priority>('NORMAL');
-  const [visibility, setVisibility] = useState<Visibility>('PRIVATE');
+  const [visibility, setVisibility] = useState<Visibility>('SHARED');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueTime, setDueTime] = useState('17:00');
   const [reminderOption, setReminderOption] = useState<string>('15_MIN');
@@ -114,7 +114,7 @@ export function TasksView() {
       description: 'Quick entry via natural language parser',
       category: parsedPreview.category,
       priority: parsedPreview.priority,
-      visibility: 'PRIVATE',
+      visibility: 'SHARED',
       status: 'TODO',
       dueDate: parsedPreview.dueDate,
       dueTime: parsedPreview.dueTime,
@@ -181,7 +181,7 @@ export function TasksView() {
     if (task.dependsOnTaskId) {
       const parent = tasks.find(t => t.id === task.dependsOnTaskId);
       if (parent && parent.status !== 'COMPLETED') {
-        const proceed = confirm(`⚠️ Dependency Alert: "${parent.title}" is not completed yet. Do you want to complete this task anyway?`);
+        const proceed = confirm(`Dependency Notice: "${parent.title}" is not completed yet. Do you want to complete this task anyway?`);
         if (!proceed) return;
       }
     }
@@ -197,12 +197,12 @@ export function TasksView() {
   const submitProofCompletion = () => {
     if (!showProofModal) return;
     if (!realProofUrl) {
-      alert('⚠️ Authentic photo proof is required to complete this task. Please take a photo or select one from your gallery.');
+      alert('Photo verification is required to complete this task. Please attach photographic proof.');
       return;
     }
     const res = toggleTask(showProofModal.id, realProofUrl);
     if (!res.success && res.error === 'PROOF_REQUIRED') {
-      alert('⚠️ Photo proof is required to complete this task.');
+      alert('Photo verification is required to complete this task.');
       return;
     }
     setShowProofModal(null);
@@ -469,7 +469,7 @@ export function TasksView() {
                     {parentTask && (
                       <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md w-fit">
                         <LinkIcon className="h-3 w-3" />
-                        <span>Depends on: <strong>{parentTask.title}</strong> ({parentTask.status === 'COMPLETED' ? 'Done ✓' : 'Pending'})</span>
+                        <span>Depends on: <strong>{parentTask.title}</strong> ({parentTask.status === 'COMPLETED' ? 'Done' : 'Pending'})</span>
                       </div>
                     )}
 

@@ -914,7 +914,7 @@ export const INITIAL_ENCOURAGEMENTS: Encouragement[] = [
     fromUserName: 'Satvika',
     toUserId: 'user_shanmukh',
     message: "You've got this! Remember to take a quick walk after your robotics derivations. Proud of your focus today.",
-    emoji: '💪',
+    emoji: 'Focus',
     timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
     read: true
   }

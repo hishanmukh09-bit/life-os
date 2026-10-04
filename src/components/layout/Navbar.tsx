@@ -117,17 +117,17 @@ export function Navbar() {
         {/* Brand & Space Info */}
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
-            <Heart className="h-5 w-5 fill-current" />
+            <Activity className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold tracking-tight text-foreground text-lg">LIFE OS</span>
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary uppercase tracking-wider">
-                Two-Person Private
+                Private Space
               </span>
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block">
-              &ldquo;Build better days together.&rdquo;
+              Personal & Shared Life Operating System
             </p>
           </div>
         </div>
@@ -323,7 +323,7 @@ export function Navbar() {
 
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
-              { id: 'HOME', label: 'Home Dashboard', icon: Heart },
+              { id: 'HOME', label: 'Home Dashboard', icon: Activity },
               { id: 'TASKS', label: 'Tasks & Proof', icon: CheckSquare },
               { id: 'STUDY', label: 'Study & Exams', icon: GraduationCap },
               { id: 'WORKOUT', label: 'Workouts', icon: Dumbbell },

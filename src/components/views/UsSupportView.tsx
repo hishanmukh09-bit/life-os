@@ -13,6 +13,7 @@ import {
   Smile,
   Zap,
   Coffee,
+  Award,
   CheckCircle2
 } from 'lucide-react';
 
@@ -38,7 +39,6 @@ export function UsSupportView() {
   } = useLifeOS();
 
   const [customEncouragement, setCustomEncouragement] = useState('');
-  const [selectedEmoji, setSelectedEmoji] = useState('❤️');
   const [helpCategory, setHelpCategory] = useState<HelpRequest['category']>('Study');
   const [helpNote, setHelpNote] = useState('');
   const [sentAlert, setSentAlert] = useState<string | null>(null);
@@ -51,15 +51,15 @@ export function UsSupportView() {
     e.preventDefault();
     if (!customEncouragement.trim()) return;
 
-    sendEncouragement(customEncouragement.trim(), selectedEmoji);
+    sendEncouragement(customEncouragement.trim(), 'Note');
     setCustomEncouragement('');
-    setSentAlert('Encouragement sent with love!');
+    setSentAlert('Encouragement sent successfully.');
     setTimeout(() => setSentAlert(null), 3000);
   };
 
-  const handleSendQuick = (emoji: string, msg: string) => {
-    sendEncouragement(msg, emoji);
-    setSentAlert('Encouragement sent with love!');
+  const handleSendQuick = (tag: string, msg: string) => {
+    sendEncouragement(msg, tag);
+    setSentAlert('Encouragement sent successfully.');
     setTimeout(() => setSentAlert(null), 3000);
   };
 
@@ -140,31 +140,35 @@ export function UsSupportView() {
 
           {/* Quick Encouragements */}
           <div className="space-y-2 pt-2">
-            <span className="text-xs font-bold text-foreground">Send Quick Encouragement:</span>
+            <span className="text-xs font-bold text-foreground">Send Quick Note:</span>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
-                onClick={() => handleSendQuick('💪', "You've got this! One step at a time.")}
-                className="p-2.5 rounded-xl border border-border bg-card hover:bg-rose-500/10 hover:border-rose-500/40 text-left font-medium transition-all"
+                onClick={() => handleSendQuick('Standing with you', "You've got this! One step at a time.")}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card hover:bg-rose-500/10 hover:border-rose-500/40 text-left font-medium transition-all"
               >
-                💪 You&apos;ve got this
+                <Zap className="h-4 w-4 text-rose-500 shrink-0" />
+                <span>You&apos;ve got this</span>
               </button>
               <button
-                onClick={() => handleSendQuick('☕', 'Take a gentle break, you’ve worked hard.')}
-                className="p-2.5 rounded-xl border border-border bg-card hover:bg-amber-500/10 hover:border-amber-500/40 text-left font-medium transition-all"
+                onClick={() => handleSendQuick('Break', 'Take a gentle break, you’ve worked hard.')}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card hover:bg-amber-500/10 hover:border-amber-500/40 text-left font-medium transition-all"
               >
-                ☕ Take a break
+                <Coffee className="h-4 w-4 text-amber-500 shrink-0" />
+                <span>Take a break</span>
               </button>
               <button
-                onClick={() => handleSendQuick('🌟', 'I am so proud of your consistency today.')}
-                className="p-2.5 rounded-xl border border-border bg-card hover:bg-indigo-500/10 hover:border-indigo-500/40 text-left font-medium transition-all"
+                onClick={() => handleSendQuick('Proud', 'I am proud of your consistency today.')}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card hover:bg-indigo-500/10 hover:border-indigo-500/40 text-left font-medium transition-all"
               >
-                🌟 Proud of you
+                <Award className="h-4 w-4 text-indigo-500 shrink-0" />
+                <span>Proud of you</span>
               </button>
               <button
-                onClick={() => handleSendQuick('🤝', 'Let me know if you need a hand with anything!')}
-                className="p-2.5 rounded-xl border border-border bg-card hover:bg-emerald-500/10 hover:border-emerald-500/40 text-left font-medium transition-all"
+                onClick={() => handleSendQuick('Support', 'Let me know if you need a hand with anything!')}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card hover:bg-emerald-500/10 hover:border-emerald-500/40 text-left font-medium transition-all"
               >
-                🤝 Need a hand?
+                <LifeBuoy className="h-4 w-4 text-emerald-500 shrink-0" />
+                <span>Need a hand?</span>
               </button>
             </div>
           </div>
@@ -253,9 +257,11 @@ export function UsSupportView() {
                     <span className="font-bold text-foreground">{enc.fromUserName}</span>
                     <span className="text-[10px] text-muted-foreground">{new Date(enc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
-                  <p className="text-foreground">
-                    <span className="mr-1">{enc.emoji}</span>
-                    {enc.message}
+                  <p className="text-foreground flex items-center gap-1.5">
+                    {enc.emoji && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary shrink-0">{enc.emoji.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}]/gu, '') || 'Note'}</span>
+                    )}
+                    <span>{enc.message}</span>
                   </p>
                 </div>
               ))}

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Bell, X, Check } from 'lucide-react';
 import {
   Space,
   UserProfile,
@@ -357,7 +358,14 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       }
     }
     loadDbTasks();
-    return () => { isMounted = false; };
+    const interval = setInterval(loadDbTasks, 3000);
+    const onFocus = () => loadDbTasks();
+    window.addEventListener('focus', onFocus);
+    return () => { 
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [currentSpace.id, currentUser.id]);
 
   // Real Persistent Reminder Engine Listener
@@ -940,7 +948,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   };
 
   const requestHelp = (category: HelpRequest['category'], message?: string) => {
-    sendEncouragement(`I could use a little help with ${category}. ${message || ''}`.trim(), '🤝');
+    sendEncouragement(`I could use a little help with ${category}. ${message || ''}`.trim(), 'Help');
   };
 
   const addMemory = (memoryData: Omit<MemoryItem, 'id' | 'spaceId' | 'userId'>) => {
@@ -1127,13 +1135,14 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider">
               <span className="flex h-2 w-2 rounded-full bg-primary animate-ping" />
-              <span>🔔 Due Now Reminder</span>
+              <Bell className="h-3.5 w-3.5 inline mr-1" />
+              <span>Due Now Reminder</span>
             </div>
             <button
               onClick={dismissReminderAlert}
               className="text-muted-foreground hover:text-foreground text-xs p-1"
             >
-              ✕
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -1156,7 +1165,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
                 }}
                 className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
               >
-                Complete ✓
+                Mark Complete
               </button>
             )}
 

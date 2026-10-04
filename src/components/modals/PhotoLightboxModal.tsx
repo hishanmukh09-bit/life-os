@@ -130,8 +130,9 @@ export function PhotoLightboxModal() {
                 <span className="text-[11px] font-bold text-muted-foreground uppercase block mb-1.5">Detected Visual Entities</span>
                 <div className="flex flex-wrap gap-1.5">
                   {aiInfo.detectedObjects.map((obj, i) => (
-                    <span key={i} className="rounded-lg bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground border border-border/50">
-                      ✓ {obj}
+                    <span key={i} className="rounded-lg bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground border border-border/50 flex items-center gap-1">
+                      <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" />
+                      <span>{obj}</span>
                     </span>
                   ))}
                 </div>
@@ -155,15 +156,15 @@ export function PhotoLightboxModal() {
                 onClick={() => setPeerConfirmed(!peerConfirmed)}
                 className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all ${
                   peerConfirmed
-                    ? 'bg-rose-500/15 border border-rose-500/30 text-rose-500'
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
                     : 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm'
                 }`}
               >
-                <Heart className={`h-4 w-4 ${peerConfirmed ? 'fill-current' : ''}`} />
+                <CheckCircle2 className={`h-4 w-4 ${peerConfirmed ? 'fill-current' : ''}`} />
                 <span>
                   {peerConfirmed
-                    ? `${partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'} confirmed this verification! ❤️`
-                    : `Confirm & Cheer Proof (${partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'})`}
+                    ? `${partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'} confirmed this verification.`
+                    : `Confirm & Verify Proof (${partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'})`}
                 </span>
               </button>
             </div>

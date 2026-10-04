@@ -212,7 +212,7 @@ export function SettingsView() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-sm hover:opacity-95 transition-all"
           >
             <Bell className="h-4 w-4" />
-            <span>{notifPermission === 'granted' ? 'Notifications Enabled ✓' : 'Enable Real Reminders'}</span>
+            <span>{notifPermission === 'granted' ? 'Notifications Active' : 'Enable Real Reminders'}</span>
           </button>
           <span className="text-[11px] text-muted-foreground font-semibold">Quiet Hours: 11 PM &ndash; 7 AM</span>
         </div>

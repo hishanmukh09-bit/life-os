@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getDb } from '@/lib/db';
+import { getAuthUser } from '@/lib/server-auth';
 
 export async function GET(
   req: NextRequest,
@@ -15,7 +17,27 @@ export async function GET(
 
     // Sanitize filename to prevent directory traversal
     const safeFilename = path.basename(filename);
-    const filePath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
+    const user = await getAuthUser(req);
+    if (!user) return new NextResponse('Unauthorized', { status: 401 });
+
+    const media = getDb().prepare(`
+      SELECT m.* FROM media m
+      JOIN space_members sm ON sm.space_id = m.space_id AND sm.user_id = ?
+      WHERE m.url = ? OR m.storage_path LIKE ?
+      LIMIT 1
+    `).get(user.id, `/uploads/${safeFilename}`, `%${safeFilename}`) as any;
+
+    if (!media) return new NextResponse('File not found', { status: 404 });
+    if (media.owner_id !== user.id && media.visibility !== 'SHARED') {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
+    const filePath = media.storage_path || path.join(process.cwd(), 'data', 'uploads', safeFilename);
+    const resolvedRoot = path.resolve(process.cwd(), 'data', 'uploads');
+    const resolvedFile = path.resolve(filePath);
+    if (!resolvedFile.startsWith(resolvedRoot)) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
 
     if (!fs.existsSync(filePath)) {
       return new NextResponse('File not found', { status: 404 });
@@ -36,7 +58,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': 'private, max-age=300',
         'Content-Length': fileBuffer.length.toString(),
       }
     });

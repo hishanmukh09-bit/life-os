@@ -1,12 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'node:path';
 import fs from 'node:fs';
-import { MediaDb, seedInitialDataIfEmpty } from '@/lib/db';
+import { AccessDb, AuthDb, MediaDb, createId, seedInitialDataIfEmpty } from '@/lib/db';
+import { getAuthUser } from '@/lib/server-auth';
 
-const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads');
+function getUploadsDir(): string {
+  if (process.env.UPLOADS_DIR) return process.env.UPLOADS_DIR;
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join('/tmp', 'data', 'uploads');
+  }
+  return path.join(process.cwd(), 'data', 'uploads');
+}
 
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const UPLOADS_DIR = getUploadsDir();
+
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Uploads directory warning:', e);
+}
+
+async function resolveUser(req: NextRequest, fallbackUserId?: string) {
+  const sessionUser = await getAuthUser(req);
+  if (sessionUser) return sessionUser;
+  
+  const userId = fallbackUserId || 'user_shanmukh';
+  const name = userId === 'user_satvika' ? 'Satvika' : 'Shanmukh';
+  return { id: userId, name, email: `${userId}@lifeos.me` };
 }
 
 export async function POST(req: NextRequest) {
@@ -31,7 +53,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'NO_FILE_PROVIDED' }, { status: 400 });
       }
 
-      ownerId = (formData.get('ownerId') as string) || ownerId;
+      ownerId = (formData.get('ownerId') as string) || (formData.get('userId') as string) || ownerId;
       spaceId = (formData.get('spaceId') as string) || spaceId;
       parentType = (formData.get('parentType') as string) || parentType;
       parentId = (formData.get('parentId') as string) || undefined;
@@ -59,7 +81,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'NO_IMAGE_DATA' }, { status: 400 });
       }
 
-      ownerId = meta.ownerId || ownerId;
+      ownerId = meta.ownerId || meta.userId || ownerId;
       spaceId = meta.spaceId || spaceId;
       parentType = meta.parentType || parentType;
       parentId = meta.parentId || undefined;
@@ -78,23 +100,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const user = await resolveUser(req, ownerId);
+    ownerId = user.id;
+
     // Size validation: max 15MB
+    if (!spaceId) {
+      return NextResponse.json({ success: false, error: 'NO_SPACE' }, { status: 400 });
+    }
+    AccessDb.assertSpaceMember(spaceId, user.id);
+
+    const allowedMimes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
+    if (!allowedMimes.has(mimeType)) {
+      return NextResponse.json({ success: false, error: 'INVALID_FILE_TYPE' }, { status: 400 });
+    }
+
     if (buffer.length > 15 * 1024 * 1024) {
       return NextResponse.json({ success: false, error: 'FILE_TOO_LARGE: Max 15MB allowed.' }, { status: 400 });
     }
 
-    const filename = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
+    const filename = `${createId('photo')}${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
     fs.writeFileSync(filePath, buffer);
-
-    const publicUrl = `/uploads/${filename}`;
 
     const mediaId = MediaDb.create({
       ownerId,
       spaceId,
       parentType,
       parentId,
-      url: publicUrl,
+      url: `/uploads/${mediaIdPlaceholder(filename)}`,
       storagePath: filePath,
       mimeType,
       sizeBytes: buffer.length,
@@ -104,7 +137,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: `/uploads/${filename}`,
       mediaId,
       filename,
       sizeBytes: buffer.length,
@@ -112,6 +145,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Photo upload error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: error.status || 500 });
   }
+}
+
+function mediaIdPlaceholder(filename: string) {
+  return filename;
 }

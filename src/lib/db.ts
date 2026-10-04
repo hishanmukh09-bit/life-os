@@ -2,11 +2,23 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
 
-const DB_DIR = path.join(process.cwd(), 'data');
+function getDbDir(): string {
+  if (process.env.DATABASE_DIR) return process.env.DATABASE_DIR;
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join('/tmp', 'data');
+  }
+  return path.join(process.cwd(), 'data');
+}
+
+const DB_DIR = getDbDir();
 const DB_PATH = path.join(DB_DIR, 'lifeos.db');
 
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create DB_DIR, using fallback:', e);
 }
 
 let _db: DatabaseSync | null = null;
@@ -23,10 +35,17 @@ export function getDb(): DatabaseSync {
 
 function initSchema(db: DatabaseSync) {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      email TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'PARTNER',
       accent_color TEXT DEFAULT 'indigo',
       theme TEXT DEFAULT 'dark',
@@ -52,6 +71,8 @@ function initSchema(db: DatabaseSync) {
       joined_at TEXT NOT NULL,
       PRIMARY KEY (space_id, user_id)
     );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_spaces_invite_code ON spaces (invite_code);
 
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
@@ -119,6 +140,10 @@ function initSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_task_user_offset_active
+      ON reminders (task_id, user_id, offset_minutes)
+      WHERE status = 'SCHEDULED';
+
     CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -162,7 +187,91 @@ function initSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_reminders_sched ON reminders (status, scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_media_visibility ON media (space_id, visibility, owner_id);
   `);
+
+  const columns = db.prepare(`PRAGMA table_info(users)`).all() as Array<{ name: string }>;
+  if (!columns.some(c => c.name === 'password_hash')) {
+    db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT;`);
+  }
+  db.prepare(`
+    INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+    VALUES (1, 'initial_sqlite_schema_with_auth_columns', ?)
+  `).run(new Date().toISOString());
 }
+
+export function createId(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export const AuthDb = {
+  createUser(data: { name: string; email: string; passwordHash: string }) {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const id = createId('user');
+    db.prepare(`
+      INSERT INTO users (id, name, email, password_hash, role, accent_color, theme, created_at)
+      VALUES (?, ?, ?, ?, 'OWNER', 'indigo', 'dark', ?)
+    `).run(id, data.name.trim(), data.email.toLowerCase().trim(), data.passwordHash, now);
+
+    const spaceId = createId('space');
+    const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+    db.prepare(`
+      INSERT INTO spaces (id, name, invite_code, owner_id, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(spaceId, `${data.name.trim()}'s LIFE OS`, inviteCode, id, now);
+    db.prepare(`
+      INSERT INTO space_members (space_id, user_id, role, joined_at)
+      VALUES (?, ?, 'OWNER', ?)
+    `).run(spaceId, id, now);
+    return { id, spaceId, inviteCode };
+  },
+
+  findByEmail(email: string) {
+    return getDb().prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim()) as any;
+  },
+
+  firstSpaceForUser(userId: string) {
+    return getDb().prepare(`
+      SELECT s.* FROM spaces s
+      JOIN space_members sm ON sm.space_id = s.id
+      WHERE sm.user_id = ?
+      ORDER BY sm.joined_at ASC
+      LIMIT 1
+    `).get(userId) as any;
+  }
+};
+
+export const AccessDb = {
+  isSpaceMember(spaceId: string, userId: string) {
+    const row = getDb().prepare('SELECT 1 FROM space_members WHERE space_id = ? AND user_id = ?').get(spaceId, userId);
+    return Boolean(row);
+  },
+
+  assertSpaceMember(spaceId: string, userId: string) {
+    if (!this.isSpaceMember(spaceId, userId)) {
+      throw Object.assign(new Error('FORBIDDEN'), { status: 403 });
+    }
+  },
+
+  getTaskForAccess(taskId: string, userId: string) {
+    const task = getDb().prepare('SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL').get(taskId) as DbTask | undefined;
+    if (!task) return null;
+    this.assertSpaceMember(task.space_id, userId);
+    if (task.creator_id !== userId && task.assigned_to_id !== userId && task.visibility !== 'SHARED') {
+      throw Object.assign(new Error('FORBIDDEN'), { status: 403 });
+    }
+    return task;
+  },
+
+  canAccessMedia(mediaId: string, userId: string) {
+    const media = getDb().prepare('SELECT * FROM media WHERE id = ?').get(mediaId) as any;
+    if (!media) return null;
+    this.assertSpaceMember(media.space_id, userId);
+    if (media.owner_id !== userId && media.visibility !== 'SHARED') {
+      throw Object.assign(new Error('FORBIDDEN'), { status: 403 });
+    }
+    return media;
+  }
+};
 
 // ------------------- TASKS REPOSITORY -------------------
 
@@ -198,8 +307,8 @@ export const TaskDb = {
   list(spaceId: string, userId: string, includeTrash = false) {
     const db = getDb();
     const query = includeTrash
-      ? `SELECT * FROM tasks WHERE space_id = ? AND deleted_at IS NOT NULL AND (creator_id = ? OR visibility = 'SHARED') ORDER BY updated_at DESC`
-      : `SELECT * FROM tasks WHERE space_id = ? AND deleted_at IS NULL AND (creator_id = ? OR visibility = 'SHARED') ORDER BY 
+      ? `SELECT * FROM tasks WHERE space_id = ? AND deleted_at IS NOT NULL AND (creator_id = ? OR assigned_to_id = ? OR visibility = 'SHARED') ORDER BY updated_at DESC`
+      : `SELECT * FROM tasks WHERE space_id = ? AND deleted_at IS NULL AND (creator_id = ? OR assigned_to_id = ? OR visibility = 'SHARED') ORDER BY 
           CASE priority 
             WHEN 'MUST_DO' THEN 1 
             WHEN 'HIGH' THEN 2 
@@ -207,7 +316,7 @@ export const TaskDb = {
             ELSE 4 
           END, due_date ASC, due_time ASC`;
 
-    const rows = db.prepare(query).all(spaceId, userId) as unknown as DbTask[];
+    const rows = db.prepare(query).all(spaceId, userId, userId) as unknown as DbTask[];
 
     return rows.map(r => {
       const subtasks = db.prepare('SELECT * FROM task_subtasks WHERE task_id = ? ORDER BY sort_order ASC').all(r.id) as any[];
@@ -270,7 +379,7 @@ export const TaskDb = {
   create(task: any) {
     const db = getDb();
     const now = new Date().toISOString();
-    const id = task.id || `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = task.id || createId('task');
 
     db.prepare(`
       INSERT INTO tasks (
@@ -373,7 +482,7 @@ export const TaskDb = {
 
   toggle(taskId: string, userId: string, userName: string, proofImg?: string) {
     const db = getDb();
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as DbTask | undefined;
+    const task = AccessDb.getTaskForAccess(taskId, userId);
     if (!task) return { success: false, error: 'TASK_NOT_FOUND' };
 
     const isCompleting = task.status !== 'COMPLETED';
@@ -394,7 +503,7 @@ export const TaskDb = {
       db.prepare(`UPDATE reminders SET status = 'CANCELLED' WHERE task_id = ? AND status = 'SCHEDULED'`).run(taskId);
 
       if (proofImg) {
-        const proofId = `proof_${Date.now()}`;
+        const proofId = createId('proof');
         db.prepare(`
           INSERT INTO task_proofs (
             id, task_id, image_url, uploaded_by, timestamp, visibility, ai_verified, ai_confidence, ai_detected_objects, ai_summary, ai_verification_hash
@@ -478,10 +587,12 @@ export const TaskDb = {
 export const ReminderDb = {
   create(data: { userId: string; taskId?: string; title: string; type?: string; scheduledAt: string; offsetMinutes?: number }) {
     const db = getDb();
-    const id = `rem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const id = createId('rem');
     db.prepare(`
       INSERT INTO reminders (id, user_id, task_id, title, type, offset_minutes, scheduled_at, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'SCHEDULED', ?)
+      ON CONFLICT(task_id, user_id, offset_minutes) WHERE status = 'SCHEDULED'
+      DO UPDATE SET title = excluded.title, scheduled_at = excluded.scheduled_at, type = excluded.type
     `).run(
       id,
       data.userId,
@@ -515,6 +626,18 @@ export const ReminderDb = {
     db.prepare(`UPDATE reminders SET status = 'SENT', sent_at = ? WHERE id = ?`).run(now, id);
   },
 
+  markSentForUser(id: string, userId: string) {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const result = db.prepare(`UPDATE reminders SET status = 'SENT', sent_at = ? WHERE id = ? AND user_id = ?`).run(now, id, userId);
+    return result.changes > 0;
+  },
+
+  snooze(id: string, until: string) {
+    const db = getDb();
+    db.prepare(`UPDATE reminders SET scheduled_at = ?, status = 'SCHEDULED' WHERE id = ?`).run(until, id);
+  },
+
   rescheduleForTask(taskId: string, newDate: string, newTime?: string) {
     const db = getDb();
     const activeReminders = db.prepare('SELECT * FROM reminders WHERE task_id = ? AND status = "SCHEDULED"').all(taskId) as any[];
@@ -534,7 +657,7 @@ export const ReminderDb = {
 export const NotificationDb = {
   create(data: { userId: string; title: string; body: string; type: string; relatedId?: string }) {
     const db = getDb();
-    const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const id = createId('notif');
     db.prepare(`
       INSERT INTO notifications (id, user_id, title, body, type, related_id, is_read, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 0, ?)
@@ -550,6 +673,11 @@ export const NotificationDb = {
   markRead(id: string) {
     const db = getDb();
     db.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ?`).run(id);
+  },
+
+  markReadForUser(id: string, userId: string) {
+    const db = getDb();
+    db.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`).run(id, userId);
   },
 
   markAllRead(userId: string) {
@@ -574,7 +702,7 @@ export const MediaDb = {
     visibility?: string;
   }) {
     const db = getDb();
-    const id = `media_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const id = createId('media');
     db.prepare(`
       INSERT INTO media (id, owner_id, space_id, parent_type, parent_id, url, storage_path, mime_type, size_bytes, caption, visibility, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -645,13 +773,21 @@ export const PatternDb = {
     }
   },
 
-  confirm(id: string) {
+  confirm(id: string, userId?: string) {
     const db = getDb();
+    if (userId) {
+      db.prepare('UPDATE ai_patterns SET confirmed_by_user = 1, updated_at = ? WHERE id = ? AND user_id = ?').run(new Date().toISOString(), id, userId);
+      return;
+    }
     db.prepare('UPDATE ai_patterns SET confirmed_by_user = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
   },
 
-  forget(id: string) {
+  forget(id: string, userId?: string) {
     const db = getDb();
+    if (userId) {
+      db.prepare('DELETE FROM ai_patterns WHERE id = ? AND user_id = ?').run(id, userId);
+      return;
+    }
     db.prepare('DELETE FROM ai_patterns WHERE id = ?').run(id);
   }
 };
@@ -659,29 +795,8 @@ export const PatternDb = {
 // ------------------- SEED INITIAL PROFILES & SPACE -------------------
 
 export function seedInitialDataIfEmpty() {
-  const db = getDb();
-  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-  if (userCount.count === 0) {
-    const now = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO users (id, name, email, role, accent_color, theme, sleep_target_hours, wake_target_time, water_target_ml, daily_study_target_hours, created_at)
-      VALUES 
-      ('user_shanmukh', 'Shanmukh', 'shanmukh@lifeos.me', 'OWNER', 'indigo', 'dark', 8, '07:00 AM', 2500, 4, ?),
-      ('user_satvika', 'Satvika', 'satvika@lifeos.me', 'PARTNER', 'rose', 'dark', 8, '07:30 AM', 2500, 4, ?)
-    `).run(now, now);
-
-    db.prepare(`
-      INSERT INTO spaces (id, name, invite_code, owner_id, created_at)
-      VALUES ('space_lifeos_demo', 'Our Haven', 'GROW02', 'user_shanmukh', ?)
-    `).run(now);
-
-    db.prepare(`
-      INSERT INTO space_members (space_id, user_id, role, joined_at)
-      VALUES 
-      ('space_lifeos_demo', 'user_shanmukh', 'OWNER', ?),
-      ('space_lifeos_demo', 'user_satvika', 'PARTNER', ?)
-    `).run(now, now);
-  }
+  // Kept for backward-compatible imports. Production accounts must start empty.
+  getDb();
 }
 
 // ------------------- HELPER UTILITIES -------------------

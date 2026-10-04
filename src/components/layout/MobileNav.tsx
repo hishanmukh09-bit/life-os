@@ -7,7 +7,7 @@ import {
   CheckSquare, 
   Activity, 
   LineChart, 
-  Heart, 
+  Users, 
   Plus, 
   Droplets, 
   Dumbbell, 
@@ -32,7 +32,7 @@ export function MobileNav() {
     { id: 'TASKS', label: 'Tasks', icon: CheckSquare },
     { id: 'TIMELINE', label: 'Timeline', icon: Clock },
     { id: 'PROGRESS', label: 'Trends', icon: LineChart },
-    { id: 'US', label: 'Us', icon: Heart },
+    { id: 'US', label: 'Shared', icon: Users },
   ];
 
   return (

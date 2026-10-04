@@ -251,8 +251,8 @@ export function GoalsProgressView() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {achievements.map((ach) => (
                 <div key={ach.id} className="p-4 rounded-2xl bg-secondary/30 border border-border/50 space-y-1 text-xs">
-                  <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-                    ★
+                  <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <Award className="h-4 w-4" />
                   </div>
                   <h4 className="font-bold text-foreground pt-1">{ach.title}</h4>
                   <p className="text-[11px] text-muted-foreground">{ach.description}</p>

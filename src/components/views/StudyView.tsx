@@ -142,7 +142,7 @@ Unit 3: Robotics Dynamics & Control
     setCapturedTakeaway('');
     setCapturedPhoto('');
     setShowCaptureModal(false);
-    alert(`🎉 Focus block complete! ${pendingMins} minutes logged for ${selectedSubject}.`);
+    alert(`Focus block complete! ${pendingMins} minutes logged for ${selectedSubject}.`);
   };
 
   // Syllabus Parsing & Plan Generation
@@ -164,7 +164,7 @@ Unit 3: Robotics Dynamics & Control
           description: `Generated from Syllabus-to-Plan Engine. Day ${day.dayNumber} block (~${Math.round(day.durationMinutes / day.topics.length)} mins).`,
           category: 'Study',
           priority: day.mode === 'MOCK_TEST' ? 'MUST_DO' : 'HIGH',
-          visibility: 'PRIVATE',
+          visibility: 'SHARED',
           status: 'TODO',
           dueDate: day.date,
           dueTime: '10:00',
@@ -175,7 +175,7 @@ Unit 3: Robotics Dynamics & Control
         addedCount++;
       });
     });
-    alert(`✅ Successfully converted ${addedCount} study plan milestones into actionable daily tasks!`);
+    alert(`Successfully converted ${addedCount} study plan milestones into actionable daily tasks.`);
     setShowSyllabusModal(false);
   };
 

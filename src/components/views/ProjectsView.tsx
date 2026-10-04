@@ -59,7 +59,7 @@ export function ProjectsView() {
 
   const handleTriggerBlockerHelp = (project: ProjectItem) => {
     requestHelp('Technical', `Project "${project.title}" is blocked: ${project.blockerReason || 'Needs component delivery'}`);
-    alert('Blocker help notification sent to partner! ❤️');
+    alert('Blocker help notification sent to partner.');
   };
 
   return (

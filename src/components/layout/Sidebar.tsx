@@ -20,7 +20,7 @@ import {
   Camera,
   Award,
   CreditCard,
-  Heart,
+  Users,
   BookOpen,
   FolderLock,
   Bot,
@@ -59,9 +59,9 @@ export function Sidebar() {
     { id: 'GALLERY', label: 'Our Photo Gallery', icon: Camera },
     { id: 'GROWTH', label: 'Skills & Reading', icon: Award },
     { id: 'FINANCE', label: 'Finance & Trips', icon: CreditCard, badge: pendingExpenses || undefined },
-    { id: 'US', label: 'Us & Support', icon: Heart, badge: unreadEncouragements || undefined },
+    { id: 'US', label: 'Shared Space', icon: Users, badge: unreadEncouragements || undefined },
     { id: 'JOURNAL', label: 'Private Journal', icon: BookOpen },
-    { id: 'MEMORIES', label: 'Our Memories', icon: Camera },
+    { id: 'MEMORIES', label: 'Memories', icon: Camera },
     { id: 'LIFE_ADMIN', label: 'Life Admin', icon: FolderLock },
     { id: 'AI_COACH', label: 'AI Life Coach', icon: Bot },
     { id: 'SETTINGS', label: 'Settings', icon: Settings },
@@ -107,11 +107,11 @@ export function Sidebar() {
         })}
       </div>
 
-      {/* Partner reassurance footer banner */}
+      {/* Partner privacy footer */}
       <div className="mt-auto p-4 m-3 rounded-2xl border border-border/50 bg-secondary/30 backdrop-blur-xs">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-emerald-500" />
-          <span className="text-xs font-semibold text-foreground">Private Sanctuary</span>
+          <span className="text-xs font-semibold text-foreground">Encrypted Workspace</span>
         </div>
         <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
           {partnerUser ? `Sharing space with ${partnerUser.name.split(' ')[0]}. Strict privacy isolated.` : 'Private space active.'}

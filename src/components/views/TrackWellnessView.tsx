@@ -135,11 +135,11 @@ export function TrackWellnessView() {
                         : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
                     }`}
                   >
-                    {m === 'Great' && '✨ Great'}
-                    {m === 'Good' && '😊 Good'}
-                    {m === 'Okay' && '😐 Okay'}
-                    {m === 'Low' && '🌧️ Low'}
-                    {m === 'Tired' && '🥱 Tired'}
+                    {m === 'Great' && 'Peak'}
+                    {m === 'Good' && 'Good'}
+                    {m === 'Okay' && 'Balanced'}
+                    {m === 'Low' && 'Low'}
+                    {m === 'Tired' && 'Resting'}
                   </button>
                 ))}
               </div>

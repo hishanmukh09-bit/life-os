@@ -15,7 +15,7 @@ import {
   Dumbbell,
   GraduationCap,
   Sparkles,
-  Heart,
+  Users,
   ArrowRight,
   Send,
   Zap,
@@ -30,7 +30,9 @@ import {
   Layers,
   HelpCircle,
   TrendingUp,
+  Heart,
   Smile,
+  Calendar,
   X
 } from 'lucide-react';
 
@@ -205,23 +207,23 @@ export function HomeView() {
         </div>
 
         {specialMode === 'REST_DAY' && (
-          <span className="text-emerald-600 dark:text-emerald-400 font-semibold italic">
-            🌱 Rest is essential recovery. Workout expectations gently adapted.
+          <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-xs">
+            Rest Day active: Workout target adapted for recovery.
           </span>
         )}
         {specialMode === 'TRAVEL' && (
-          <span className="text-primary font-semibold italic">
-            ✈️ Travel Mode active: Habit streaks safely frozen.
+          <span className="text-primary font-semibold text-xs">
+            Travel Mode active: Routine metrics preserved.
           </span>
         )}
         {specialMode === 'EXAM' && (
-          <span className="text-amber-600 dark:text-amber-400 font-semibold italic">
-            📚 Exam Mode: Revision countdown prioritized.
+          <span className="text-amber-600 dark:text-amber-400 font-semibold text-xs">
+            Exam Mode active: Focus blocks prioritized.
           </span>
         )}
       </div>
 
-      {/* 3. Header Greeting & Morning Briefing Card */}
+      {/* 3. Header Greeting & Status Card */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-linear-to-br from-card via-card to-primary/5 border border-border shadow-xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider">
@@ -229,10 +231,10 @@ export function HomeView() {
             <span>{currentDateStr}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Good morning, {currentUser.name.split(' ')[0]}
+            Welcome back, {currentUser.name.split(' ')[0]}
           </h1>
           <p className="text-xs text-muted-foreground max-w-xl leading-relaxed pt-1">
-            <strong>AI Daily Briefing:</strong> You slept 7h 42m with target wake {currentUser.wakeTargetTime}. You have an engineering problem set due in 3 days, and your morning workout is logged. We suggest completing your Kinematics derivations before evening reconnect.
+            System initialized. Add your tasks, syllabus topics, and habits to track your daily progress together.
           </p>
         </div>
 
@@ -271,7 +273,7 @@ export function HomeView() {
                   onClick={() => toggleTask(oneThingTask.id)}
                   className={`px-3 py-1 rounded-xl text-xs font-bold ${oneThingTask.status === 'COMPLETED' ? 'bg-emerald-500 text-white' : 'bg-primary text-primary-foreground'}`}
                 >
-                  {oneThingTask.status === 'COMPLETED' ? 'Completed ✓' : 'Complete'}
+                  {oneThingTask.status === 'COMPLETED' ? 'Completed' : 'Complete'}
                 </button>
               </div>
             </div>
@@ -374,19 +376,19 @@ export function HomeView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-              <Sparkles className="h-5 w-5" />
+              <Zap className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-base font-bold text-foreground">
-                LifeOS AI Copilot &bull; {currentUser.name.split(' ')[0]} &amp; {partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'}
+                Command Assistant &bull; {currentUser.name.split(' ')[0]} &amp; {partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'}
               </h2>
               <span className="text-[11px] text-muted-foreground">
                 Grounded in your real stored tasks, exams, hydration, and partner updates.
               </span>
             </div>
           </div>
-          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 w-fit">
-            ✓ 100% Zero-Hallucination
+          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 w-fit flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3" /> Live Agenda Synchronized
           </span>
         </div>
 
@@ -394,27 +396,31 @@ export function HomeView() {
         <div className="flex flex-wrap gap-2 text-xs">
           <button
             onClick={() => handleAskCoach('What should I focus on next?')}
-            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
           >
-            ⚡ What should I focus on next?
+            <Zap className="h-3.5 w-3.5 text-primary" />
+            <span>What should I focus on next?</span>
           </button>
           <button
             onClick={() => handleAskCoach('When is our next exam deadline?')}
-            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
           >
-            📅 Check exam deadlines
+            <Calendar className="h-3.5 w-3.5 text-primary" />
+            <span>Check exam deadlines</span>
           </button>
           <button
             onClick={() => handleAskCoach('How is our water and sleep?')}
-            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
           >
-            💧 Water &amp; sleep consistency
+            <Droplets className="h-3.5 w-3.5 text-primary" />
+            <span>Water &amp; sleep consistency</span>
           </button>
           <button
             onClick={() => handleAskCoach(`Check in on ${partnerUser ? partnerUser.name.split(' ')[0] : 'Partner'}`)}
-            className="px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-muted/40 hover:bg-muted font-medium text-foreground transition-all"
           >
-            ❤️ Partner status
+            <Users className="h-3.5 w-3.5 text-primary" />
+            <span>Partner status</span>
           </button>
         </div>
 
@@ -497,8 +503,9 @@ export function HomeView() {
               />
               <div className="overflow-hidden space-y-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">
-                    ✓ {task.proof!.aiVerification?.confidence ? `${task.proof!.aiVerification.confidence.toFixed(0)}% AI Match` : 'Verified'}
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-sm flex items-center gap-0.5">
+                    <CheckCircle2 className="h-2.5 w-2.5 inline" />
+                    <span>{task.proof!.aiVerification?.confidence ? `${task.proof!.aiVerification.confidence.toFixed(0)}% Match` : 'Verified'}</span>
                   </span>
                   <span className="text-[10px] text-muted-foreground">{task.proof!.uploadedBy}</span>
                 </div>
@@ -665,7 +672,7 @@ export function HomeView() {
         <div className="rounded-3xl border border-border/80 bg-card p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Heart className="h-5 w-5 text-rose-500 fill-rose-500/20" />
+              <Users className="h-5 w-5 text-primary" />
               <h3 className="text-base font-bold text-foreground">
                 How {partnerUser.name.split(' ')[0]} is doing
               </h3>
@@ -683,45 +690,45 @@ export function HomeView() {
                 {partnerSharedTasks.filter(t => t.status === 'COMPLETED').length} / {partnerSharedTasks.length} Completed
               </div>
               <p className="text-xs text-muted-foreground">
-                Active on bio-informatics design & study sprint
+                Shared tasks and collaboration
               </p>
             </div>
 
             <div className="p-4 rounded-2xl bg-secondary/30 border border-border/50 space-y-2">
               <span className="text-xs font-semibold text-muted-foreground">Workout & Wellness</span>
               <div className="text-lg font-bold text-foreground">
-                {partnerWorkout ? `${partnerWorkout.type} Logged` : 'Evening Mobility Scheduled'}
+                {partnerWorkout ? `${partnerWorkout.type} Logged` : 'Scheduled'}
               </div>
               <p className="text-xs text-muted-foreground">
-                Hydration target on track
+                Daily activity log
               </p>
             </div>
 
             <div className="p-4 rounded-2xl bg-secondary/30 border border-border/50 space-y-2.5">
-              <span className="text-xs font-semibold text-muted-foreground">Send Encouragement</span>
+              <span className="text-xs font-semibold text-muted-foreground">Send Note</span>
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => handleQuickEncourage('❤️', "You've got this! Thinking of you.")}
-                  className="px-2.5 py-1 text-xs rounded-lg bg-card hover:bg-rose-500/10 hover:text-rose-500 border border-border font-medium transition-colors"
+                  onClick={() => handleQuickEncourage('Got this', "You've got this! Standing with you.")}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-card hover:bg-primary/10 hover:text-primary border border-border font-medium transition-colors"
                 >
-                  ❤️ Got this
+                  Got this
                 </button>
                 <button
-                  onClick={() => handleQuickEncourage('☕', 'Take a gentle breath & tea break.')}
-                  className="px-2.5 py-1 text-xs rounded-lg bg-card hover:bg-amber-500/10 hover:text-amber-500 border border-border font-medium transition-colors"
+                  onClick={() => handleQuickEncourage('Break', 'Take a quick break.')}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-card hover:bg-primary/10 hover:text-primary border border-border font-medium transition-colors"
                 >
-                  ☕ Break
+                  Take break
                 </button>
                 <button
-                  onClick={() => handleQuickEncourage('🌟', 'So proud of your dedication!')}
-                  className="px-2.5 py-1 text-xs rounded-lg bg-card hover:bg-indigo-500/10 hover:text-indigo-500 border border-border font-medium transition-colors"
+                  onClick={() => handleQuickEncourage('Great focus', 'Great focus on work today!')}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-card hover:bg-primary/10 hover:text-primary border border-border font-medium transition-colors"
                 >
-                  🌟 Proud
+                  Great focus
                 </button>
               </div>
               {encouragementSent && (
                 <p className="text-xs text-emerald-500 font-semibold animate-in fade-in">
-                  Encouragement sent to {partnerUser.name.split(' ')[0]}!
+                  Sent to {partnerUser.name.split(' ')[0]}
                 </p>
               )}
             </div>
