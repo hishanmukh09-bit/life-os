@@ -6,6 +6,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { PhotoLightboxModal } from '@/components/modals/PhotoLightboxModal';
+import { PwaInstallBanner } from '@/components/pwa/PwaInstallBanner';
 
 // Views
 import { HomeView } from '@/components/views/HomeView';
@@ -104,6 +105,7 @@ export default function AppEntry() {
 
       <MobileNav />
       <PhotoLightboxModal />
+      <PwaInstallBanner />
     </div>
   );
 }

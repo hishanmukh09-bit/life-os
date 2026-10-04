@@ -29,10 +29,15 @@ import {
   CalendarDays,
   Settings as SettingsIcon,
   FolderLock,
-  Bot
+  Bot,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
+import { soundFx } from '@/lib/sound-fx';
 
 const ACCENT_COLORS = [
+  { name: 'Rose Gold', id: 'rose-gold', class: 'bg-rose-400' },
+  { name: 'OLED Midnight', id: 'midnight', class: 'bg-zinc-800' },
   { name: 'Indigo', id: 'indigo', class: 'bg-indigo-500' },
   { name: 'Rose', id: 'rose', class: 'bg-rose-500' },
   { name: 'Emerald', id: 'emerald', class: 'bg-emerald-500' },
@@ -57,12 +62,14 @@ export function Navbar() {
   const [copied, setCopied] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isSoundMuted, setIsSoundMuted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsList, setNotificationsList] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
   React.useEffect(() => {
+    setIsSoundMuted(soundFx.isMuted());
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission);
     }
@@ -366,6 +373,25 @@ export function Navbar() {
               <Moon className="h-3.5 w-3.5" />
             </button>
           </div>
+
+          {/* Sound FX Synthesizer Toggle */}
+          <button
+            onClick={() => {
+              const newState = soundFx.toggleMute();
+              setIsSoundMuted(newState);
+              if (!newState) {
+                soundFx.playEncouragementChime();
+              }
+            }}
+            title={isSoundMuted ? 'Sound FX: Muted (Click to Unmute)' : 'Sound FX: Active (Click to Mute)'}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 hover:bg-muted/50 transition-colors"
+          >
+            {isSoundMuted ? (
+              <VolumeX className="h-4 w-4 text-muted-foreground/50" />
+            ) : (
+              <Volume2 className="h-4 w-4 text-primary animate-pulse" />
+            )}
+          </button>
 
           {/* Mobile All-Sections Drawer Button */}
           <button

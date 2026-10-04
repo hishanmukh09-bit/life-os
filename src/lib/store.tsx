@@ -71,6 +71,7 @@ import { AIService } from './ai-service';
 import { reminderEngine } from './reminder-engine';
 import { WEBSTORAGE_KEYS, getWebStorage, setWebStorage } from './webstorage';
 import { broadcastSyncAction, initRealtimeCloudSync, SyncPayload } from './cloud-sync';
+import { soundFx } from './sound-fx';
 
 export interface LightboxData {
   url: string;
@@ -917,6 +918,9 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         if (action === 'DAILY_NOTE_SAVE') {
           const savedNote = data as DailyPartnerNote;
           if (savedNote?.id) {
+            if (savedNote.fromUserId !== currentUserRef.current.id) {
+              soundFx.playPartnerNoteChime();
+            }
             setDailyPartnerNotes(prev => {
               const filtered = prev.filter(n => !(n.fromUserId === savedNote.fromUserId && n.date === savedNote.date));
               const updated = [savedNote, ...filtered];
@@ -968,7 +972,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (action === 'TASK_TOGGLE') {
-          const { taskId, status, completedAt, updatedAt, proof } = data;
+          const { taskId, status, completedAt, updatedAt, proof, userId } = data;
+          if (status === 'COMPLETED' && userId && userId !== currentUserRef.current.id) {
+            soundFx.playTaskCompleteChime();
+          }
           setTasks(prev => {
             const updated = prev.map(t => {
               if (t.id === taskId) {
@@ -1332,6 +1339,9 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         if (action === 'ENCOURAGEMENT_SEND') {
           const newEnc = data as Encouragement;
           if (newEnc?.id) {
+            if (newEnc.fromUserId !== currentUserRef.current.id) {
+              soundFx.playEncouragementChime();
+            }
             setEncouragements(prev => {
               if (prev.some(e => e.id === newEnc.id)) return prev;
               return [newEnc, ...prev];
@@ -1485,6 +1495,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
     });
+
+    if (nextStatus === 'COMPLETED') {
+      soundFx.playTaskCompleteChime();
+    }
 
     // Broadcast in real-time to all connected devices (phone, laptop, tablet)
     broadcastSyncAction(currentSpace.id, 'TASK_TOGGLE', {
@@ -2014,6 +2028,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, updated);
       return updated;
     });
+    soundFx.playPartnerNoteChime();
     broadcastSyncAction(currentSpace.id, 'DAILY_NOTE_SAVE', newNote);
   };
 
@@ -2246,6 +2261,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       read: false
     };
     setEncouragements(prev => [newEnc, ...prev]);
+    soundFx.playEncouragementChime();
     broadcastSyncAction(currentSpace.id, 'ENCOURAGEMENT_SEND', newEnc);
   };
 

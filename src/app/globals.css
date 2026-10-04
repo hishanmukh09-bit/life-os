@@ -120,6 +120,33 @@
     --ring: 262 83% 68%;
     --accent: 262 83% 68%;
   }
+
+  [data-accent="rose-gold"] {
+    --primary: 345 75% 62%;
+    --ring: 345 75% 62%;
+    --accent: 345 75% 62%;
+  }
+  .dark[data-accent="rose-gold"] {
+    --primary: 345 80% 70%;
+    --ring: 345 80% 70%;
+    --accent: 345 80% 70%;
+  }
+
+  [data-accent="midnight"] {
+    --primary: 220 15% 25%;
+    --ring: 220 15% 25%;
+    --accent: 220 15% 25%;
+  }
+  .dark[data-accent="midnight"] {
+    --background: 240 10% 3.9%;
+    --card: 240 10% 7%;
+    --popover: 240 10% 7%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222 47% 11%;
+    --ring: 210 40% 98%;
+    --accent: 210 40% 98%;
+    --border: 240 6% 16%;
+  }
 }
 
 * {
