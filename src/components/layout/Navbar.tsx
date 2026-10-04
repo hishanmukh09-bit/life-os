@@ -31,7 +31,8 @@ import {
   FolderLock,
   Bot,
   Volume2,
-  VolumeX
+  VolumeX,
+  Download
 } from 'lucide-react';
 import { soundFx } from '@/lib/sound-fx';
 
@@ -257,6 +258,20 @@ export function Navbar() {
             </button>
           </div>
 
+          {/* Quick Install LifeOS App Button */}
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('lifeos:open-install-guide'));
+              }
+            }}
+            title="Install LifeOS Native App on Phone/PC"
+            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 text-xs font-semibold text-primary transition-colors active:scale-95"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Install</span>
+          </button>
+
           {/* Accent Color Picker Dropdown */}
           <div className="relative">
             <button
@@ -447,6 +462,20 @@ export function Navbar() {
               );
             })}
           </div>
+
+          {/* Quick Install LifeOS Action in Mobile Drawer */}
+          <button
+            onClick={() => {
+              setMobileMenuOpen(false);
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('lifeos:open-install-guide'));
+              }
+            }}
+            className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-md active:scale-95 transition-transform"
+          >
+            <Download className="h-4 w-4" />
+            <span>Install LifeOS App on Home Screen</span>
+          </button>
 
           {/* Quick Space & Partner Info */}
           <div className="p-3 rounded-2xl bg-secondary/30 border border-border/50 text-[11px] text-muted-foreground space-y-1">
