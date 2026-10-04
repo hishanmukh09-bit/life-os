@@ -516,6 +516,11 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.MEMORIES, memories);
+  }, [memories, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
     setWebStorage(WEBSTORAGE_KEYS.CURRENT_USER, currentUser);
   }, [currentUser, isWebStorageReady]);
 
@@ -1238,7 +1243,11 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       spaceId: currentSpace.id,
       userId: currentUser.id
     };
-    setMemories(prev => [newMem, ...prev]);
+    setMemories(prev => {
+      const updated = [newMem, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.MEMORIES, updated);
+      return updated;
+    });
   };
 
   const addLittleThing = (thingData: Omit<LittleThing, 'id' | 'spaceId' | 'userId'>) => {

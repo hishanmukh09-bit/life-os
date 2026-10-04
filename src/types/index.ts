@@ -464,6 +464,7 @@ export interface MemoryItem {
   category: 'Trip' | 'Achievement' | 'Milestone' | 'Special Day' | 'Shared Activity' | 'Fun';
   photoUrl?: string;
   notes: string;
+  visibility?: Visibility;
 }
 
 export interface LittleThing {

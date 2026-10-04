@@ -50,40 +50,46 @@ export function PhotoPicker({
       return;
     }
 
-    // Immediate local preview using Object URL
-    const localUrl = URL.createObjectURL(file);
-    setPreviewUrl(localUrl);
+    // Generate permanent base64 Data URL so it is completely preserved across browser sessions
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const permanentDataUrl = reader.result as string;
+      setPreviewUrl(permanentDataUrl);
 
-    // Upload to server API
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('ownerId', ownerId);
-      formData.append('spaceId', spaceId);
-      formData.append('parentType', parentType);
-      if (parentId) formData.append('parentId', parentId);
-      formData.append('visibility', visibility);
+      // Attempt server API upload
+      setIsUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('ownerId', ownerId);
+        formData.append('spaceId', spaceId);
+        formData.append('parentType', parentType);
+        if (parentId) formData.append('parentId', parentId);
+        formData.append('visibility', visibility);
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Upload failed');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.url) {
+            setPreviewUrl(data.url);
+            onPhotoSelected(data.url, file);
+            return;
+          }
+        }
+        // Fallback to permanent Data URL if server upload endpoint is not available
+        onPhotoSelected(permanentDataUrl, file);
+      } catch (err: any) {
+        console.warn('Backend upload unavailable, using permanent base64 Data URL:', err);
+        onPhotoSelected(permanentDataUrl, file);
+      } finally {
+        setIsUploading(false);
       }
-
-      setPreviewUrl(data.url);
-      onPhotoSelected(data.url, file);
-    } catch (err: any) {
-      console.error('Photo upload error:', err);
-      // Fallback to local base64/blob if network fails
-      onPhotoSelected(localUrl, file);
-    } finally {
-      setIsUploading(false);
-    }
+    };
+    reader.readAsDataURL(file);
   };
 
   const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

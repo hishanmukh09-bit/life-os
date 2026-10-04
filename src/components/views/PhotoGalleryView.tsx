@@ -66,15 +66,15 @@ export function PhotoGalleryView() {
       visibility: sm.visibility as any,
       ownerName: sm.owner_id === currentUser.id ? currentUser.name.split(' ')[0] : (partnerUser?.name.split(' ')[0] || 'Partner')
     })),
-    // Memories
-    ...memories.filter(m => m.photoUrl).map(m => ({
+    // Memories (Shared with partner or user's own)
+    ...memories.filter(m => m.photoUrl && (m.visibility === 'SHARED' || !m.visibility || m.userId === currentUser.id)).map(m => ({
       id: m.id,
       url: m.photoUrl!,
       title: m.title,
-      category: 'Memories' as const,
+      category: m.visibility === 'PRIVATE' ? ('Private' as const) : ('Memories' as const),
       date: m.date,
-      visibility: 'SHARED' as const,
-      ownerName: 'Us'
+      visibility: (m.visibility || 'SHARED') as any,
+      ownerName: m.userId === currentUser.id ? currentUser.name.split(' ')[0] : (partnerUser?.name.split(' ')[0] || 'Partner')
     })),
     // Workouts (Shared or user's own private)
     ...workouts.filter(w => w.photoUrl && (w.visibility === 'SHARED' || w.userId === currentUser.id)).map(w => ({
@@ -143,7 +143,8 @@ export function PhotoGalleryView() {
       notes: 'Saved via Real Photo Gallery',
       category: 'Special Day',
       date: new Date().toISOString().split('T')[0],
-      photoUrl: newPhotoUrl
+      photoUrl: newPhotoUrl,
+      visibility: newPhotoVisibility
     });
     setShowUploadModal(false);
     setNewPhotoUrl('');
