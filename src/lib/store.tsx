@@ -36,7 +36,8 @@ import {
   SkillItem,
   ReadingBook,
   PersonalChallenge,
-  SpecialMode
+  SpecialMode,
+  DailyPartnerNote
 } from '@/types';
 import {
   DEMO_SPACE,
@@ -206,6 +207,10 @@ interface LifeOSContextType {
   addLifeAdminItem: (item: Omit<LifeAdminItem, 'id' | 'spaceId' | 'userId' | 'status'>) => void;
   toggleLifeAdminStatus: (id: string) => void;
   addKnowledgeItem: (title: string, category: KnowledgeItem['category'], content: string, tags: string[]) => void;
+  // Daily Note for Each Other
+  dailyPartnerNotes: DailyPartnerNote[];
+  saveDailyNote: (note: string, moodEmoji?: string) => void;
+  deleteExam: (id: string) => void;
   cloudSyncStatus: 'connecting' | 'connected' | 'offline';
 }
 
@@ -241,6 +246,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [readingBooks, setReadingBooks] = useState<ReadingBook[]>([]);
   const [challenges, setChallenges] = useState<PersonalChallenge[]>([]);
+  const [dailyPartnerNotes, setDailyPartnerNotes] = useState<DailyPartnerNote[]>([]);
 
   // Modes & Focus
   const [specialMode, setSpecialMode] = useState<SpecialMode>('NORMAL');
@@ -311,6 +317,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   examsRef.current = exams;
   const sessionsRef = React.useRef(studySessions);
   sessionsRef.current = studySessions;
+  const dailyNotesRef = React.useRef(dailyPartnerNotes);
+  dailyNotesRef.current = dailyPartnerNotes;
+  const currentUserRef = React.useRef(currentUser);
+  currentUserRef.current = currentUser;
 
   // Sync theme & accent attribute on document
   useEffect(() => {
@@ -469,6 +479,9 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
     const storedSpace = getWebStorage<Space | null>(WEBSTORAGE_KEYS.CURRENT_SPACE, null);
     if (storedSpace) setCurrentSpace(storedSpace);
+
+    const storedDailyNotes = getWebStorage<DailyPartnerNote[]>(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, []);
+    if (storedDailyNotes.length > 0) setDailyPartnerNotes(storedDailyNotes);
 
     setIsWebStorageReady(true);
   }, []);
@@ -684,18 +697,23 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             trips: tripsRef.current,
             studySubjects: subjectsRef.current,
             exams: examsRef.current,
-            studySessions: sessionsRef.current
+            studySessions: sessionsRef.current,
+            dailyPartnerNotes: dailyNotesRef.current
           });
           return;
         }
 
         if (action === 'FULL_SYNC') {
-          // 1. Merge Tasks
+          // 1. Merge Tasks with strict privacy: never accept partner's private tasks
           if (Array.isArray(data.tasks) && data.tasks.length > 0) {
             setTasks(prev => {
               const taskMap = new Map<string, TaskItem>();
               prev.forEach(t => taskMap.set(t.id, t));
               data.tasks.forEach((rt: TaskItem) => {
+                // Strict zero-leak privacy: Never accept partner's private tasks!
+                if (rt.visibility === 'PRIVATE' && rt.creatorId !== currentUserRef.current.id) {
+                  return;
+                }
                 const existing = taskMap.get(rt.id);
                 if (!existing) {
                   taskMap.set(rt.id, rt);
@@ -843,9 +861,36 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        if (action === 'DAILY_NOTE_SAVE') {
+          const savedNote = data as DailyPartnerNote;
+          if (savedNote?.id) {
+            setDailyPartnerNotes(prev => {
+              const filtered = prev.filter(n => !(n.fromUserId === savedNote.fromUserId && n.date === savedNote.date));
+              const updated = [savedNote, ...filtered];
+              setWebStorage(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'EXAM_DELETE') {
+          const { id } = data;
+          setExams(prev => {
+            const updated = prev.filter(e => e.id !== id);
+            setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
+            return updated;
+          });
+          return;
+        }
+
         if (action === 'TASK_CREATE') {
           const newTask = data as TaskItem;
           if (!newTask?.id) return;
+          // STRICT PRIVACY: If another user created a PRIVATE task, do not store or show it!
+          if (newTask.visibility === 'PRIVATE' && newTask.creatorId !== currentUserRef.current.id) {
+            return;
+          }
           setTasks(prev => {
             if (prev.some(t => t.id === newTask.id)) return prev;
             const updated = [newTask, ...prev];
@@ -1874,6 +1919,37 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     broadcastSyncAction(currentSpace.id, 'EXAM_ADD', newExam);
   };
 
+  const deleteExam = (id: string) => {
+    setExams(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'EXAM_DELETE', { id });
+  };
+
+  const saveDailyNote = (noteText: string, moodEmoji: string = '💌') => {
+    const today = new Date().toISOString().split('T')[0];
+    const newNote: DailyPartnerNote = {
+      id: generateId('dnote'),
+      spaceId: currentSpace.id,
+      fromUserId: currentUser.id,
+      fromUserName: currentUser.name.split(' ')[0],
+      toUserId: partnerUser ? partnerUser.id : 'partner',
+      date: today,
+      note: noteText.trim(),
+      moodEmoji,
+      updatedAt: new Date().toISOString()
+    };
+    setDailyPartnerNotes(prev => {
+      const filtered = prev.filter(n => !(n.fromUserId === currentUser.id && n.date === today));
+      const updated = [newNote, ...filtered];
+      setWebStorage(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'DAILY_NOTE_SAVE', newNote);
+  };
+
   const addClassScheduleItem = (itemData: Omit<ClassScheduleItem, 'id'>) => {
     const newItem: ClassScheduleItem = {
       ...itemData,
@@ -2309,6 +2385,9 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         addLifeAdminItem,
         toggleLifeAdminStatus,
         addKnowledgeItem,
+        dailyPartnerNotes,
+        saveDailyNote,
+        deleteExam,
         cloudSyncStatus,
       }}
     >

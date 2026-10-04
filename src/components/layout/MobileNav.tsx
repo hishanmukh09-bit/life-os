@@ -20,6 +20,7 @@ import {
   Clock,
   Flame,
   GraduationCap,
+  CalendarDays,
   X
 } from 'lucide-react';
 
@@ -30,8 +31,8 @@ export function MobileNav() {
   const ITEMS = [
     { id: 'HOME', label: 'Home', icon: Home },
     { id: 'TASKS', label: 'Tasks', icon: CheckSquare },
-    { id: 'TIMELINE', label: 'Timeline', icon: Clock },
-    { id: 'PROGRESS', label: 'Trends', icon: LineChart },
+    { id: 'STUDY', label: 'Study', icon: GraduationCap },
+    { id: 'CALENDAR', label: 'Calendar', icon: CalendarDays },
     { id: 'US', label: 'Shared', icon: Users },
   ];
 

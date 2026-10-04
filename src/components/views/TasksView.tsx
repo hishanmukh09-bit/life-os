@@ -63,7 +63,7 @@ export function TasksView() {
     openLightbox
   } = useLifeOS();
 
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'MINE' | 'SHARED' | 'COMPLETED' | 'TRASH'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<'MINE' | 'SHARED' | 'COMPLETED' | 'TRASH'>('MINE');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState<TaskItem | null>(null);
@@ -84,7 +84,7 @@ export function TasksView() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory>('Study');
   const [priority, setPriority] = useState<Priority>('NORMAL');
-  const [visibility, setVisibility] = useState<Visibility>('SHARED');
+  const [visibility, setVisibility] = useState<Visibility>('PRIVATE');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueTime, setDueTime] = useState('17:00');
   const [reminderOption, setReminderOption] = useState<string>('15_MIN');
@@ -109,12 +109,14 @@ export function TasksView() {
     if (e) e.preventDefault();
     if (!parsedPreview || !parsedPreview.title.trim()) return;
 
+    const taskVisibility: Visibility = activeFilter === 'SHARED' ? 'SHARED' : 'PRIVATE';
+
     addTask({
       title: parsedPreview.title,
-      description: 'Quick entry via natural language parser',
+      description: taskVisibility === 'PRIVATE' ? 'Personal task' : 'Shared collab task',
       category: parsedPreview.category,
       priority: parsedPreview.priority,
-      visibility: 'SHARED',
+      visibility: taskVisibility,
       status: 'TODO',
       dueDate: parsedPreview.dueDate,
       dueTime: parsedPreview.dueTime,
@@ -128,15 +130,19 @@ export function TasksView() {
     setParsedPreview(null);
   };
 
-  // Task filtering
+  // Task filtering: strict personal vs shared privacy
   const filteredTasks = activeFilter === 'TRASH' ? trashTasks : tasks.filter(task => {
-    const isAccessible = task.creatorId === currentUser.id || task.visibility === 'SHARED';
-    if (!isAccessible) return false;
+    // If it is another user's private task, it MUST NEVER be accessible
+    if (task.creatorId !== currentUser.id && task.visibility === 'PRIVATE') return false;
 
     if (activeFilter === 'MINE') {
+      // ONLY tasks entered by the logged-in user
       if (task.creatorId !== currentUser.id) return false;
+      if (task.status === 'COMPLETED') return false;
     } else if (activeFilter === 'SHARED') {
+      // Shared collaborative tasks
       if (task.visibility !== 'SHARED') return false;
+      if (task.status === 'COMPLETED') return false;
     } else if (activeFilter === 'COMPLETED') {
       if (task.status !== 'COMPLETED') return false;
     }
@@ -353,22 +359,16 @@ export function TasksView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center rounded-2xl bg-muted/60 p-1 text-xs font-semibold">
           <button
-            onClick={() => setActiveFilter('ALL')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'ALL' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
-          >
-            All Tasks
-          </button>
-          <button
             onClick={() => setActiveFilter('MINE')}
             className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'MINE' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
-            My Private
+            My Tasks (Personal)
           </button>
           <button
             onClick={() => setActiveFilter('SHARED')}
             className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'SHARED' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
-            Shared
+            Shared With Partner
           </button>
           <button
             onClick={() => setActiveFilter('COMPLETED')}
@@ -380,7 +380,7 @@ export function TasksView() {
             onClick={() => setActiveFilter('TRASH')}
             className={`px-3.5 py-1.5 rounded-xl transition-all ${activeFilter === 'TRASH' ? 'bg-card text-foreground shadow-xs font-bold' : 'text-muted-foreground'}`}
           >
-            Trash Recovery ({trashTasks.length})
+            Trash ({trashTasks.length})
           </button>
         </div>
 

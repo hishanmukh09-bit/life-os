@@ -29,7 +29,8 @@ import {
   Send,
   X,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Trash2
 } from 'lucide-react';
 
 export function StudyView() {
@@ -42,8 +43,59 @@ export function StudyView() {
     logStudySession,
     addStudySubject,
     addExam,
+    deleteExam,
     addTask
   } = useLifeOS();
+
+  // Add Exam Modal state
+  const [showAddExamModal, setShowAddExamModal] = useState(false);
+  const [newExamSubject, setNewExamSubject] = useState('');
+  const [newExamDate, setNewExamDate] = useState('');
+  const [newExamDifficulty, setNewExamDifficulty] = useState<'Easy' | 'Moderate' | 'Hard'>('Moderate');
+  const [newExamTopics, setNewExamTopics] = useState('');
+  const [newExamProgress, setNewExamProgress] = useState(20);
+  const [newExamNotes, setNewExamNotes] = useState('');
+
+  const getExamCountdown = (dateStr: string) => {
+    if (!dateStr) return { label: 'Date pending', color: 'bg-muted text-muted-foreground' };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr);
+    target.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { label: `${Math.abs(diffDays)}d ago`, color: 'bg-muted text-muted-foreground' };
+    if (diffDays === 0) return { label: 'Today!', color: 'bg-rose-500/20 text-rose-500 font-extrabold animate-pulse' };
+    if (diffDays === 1) return { label: 'Tomorrow', color: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold' };
+    if (diffDays <= 3) return { label: `${diffDays} days left`, color: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold' };
+    if (diffDays <= 7) return { label: `${diffDays} days left`, color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold' };
+    return { label: `${diffDays} days left`, color: 'bg-primary/10 text-primary font-bold' };
+  };
+
+  const handleCreateExam = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newExamSubject.trim() || !newExamDate) return;
+    const topicList = newExamTopics
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    addExam({
+      subjectId: 'subj_' + Date.now(),
+      subjectName: newExamSubject.trim(),
+      date: newExamDate,
+      topics: topicList.length > 0 ? topicList : ['Core syllabus', 'Review problems'],
+      difficulty: newExamDifficulty,
+      revisionProgress: Number(newExamProgress) || 0,
+      notes: newExamNotes.trim() || undefined
+    });
+
+    setNewExamSubject('');
+    setNewExamDate('');
+    setNewExamTopics('');
+    setNewExamNotes('');
+    setNewExamProgress(20);
+    setShowAddExamModal(false);
+  };
 
   // Focus Timer state
   const [focusMode, setFocusMode] = useState<StudySession['focusMode']>('25m');
@@ -477,39 +529,83 @@ Unit 3: Robotics Dynamics & Control
 
           {/* Exam Radar List */}
           <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-3">
-            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary" />
-              Upcoming Examinations
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                Upcoming Examinations
+              </h3>
+              <button
+                onClick={() => setShowAddExamModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-xs hover:opacity-95"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Exam</span>
+              </button>
+            </div>
 
             <div className="space-y-3 pt-1">
-              {exams.map(exam => (
-                <div key={exam.id} className="p-3.5 rounded-2xl bg-secondary/30 border border-border/50 space-y-2 text-xs">
-                  <div className="flex justify-between items-start">
-                    <span className="font-bold text-foreground">{exam.subjectName}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                      12 days left
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Revision Progress</span>
-                    <span className="font-semibold text-foreground">{exam.revisionProgress}%</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full"
-                      style={{ width: `${exam.revisionProgress}%` }}
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {exam.topics.slice(0, 3).map((t, idx) => (
-                      <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded-md bg-background border border-border text-muted-foreground">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
+              {exams.length === 0 ? (
+                <div className="p-5 rounded-2xl border border-dashed border-border text-center space-y-2">
+                  <p className="text-xs text-muted-foreground">No upcoming exams or test dates scheduled.</p>
+                  <button
+                    onClick={() => setShowAddExamModal(true)}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
+                    + Add your first examination due date
+                  </button>
                 </div>
-              ))}
+              ) : (
+                exams.map(exam => {
+                  const countdown = getExamCountdown(exam.date);
+                  return (
+                    <div key={exam.id} className="p-3.5 rounded-2xl bg-secondary/30 border border-border/50 space-y-2 text-xs relative group">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="font-bold text-foreground text-sm block">{exam.subjectName}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {new Date(exam.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md ${countdown.color}`}>
+                            {countdown.label}
+                          </span>
+                          <button
+                            onClick={() => deleteExam(exam.id)}
+                            title="Delete exam"
+                            className="p-1 rounded-lg text-muted-foreground/60 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-muted-foreground text-[11px]">
+                        <span>Difficulty: <strong className="text-foreground">{exam.difficulty}</strong></span>
+                        <span>Revision: <strong className="text-foreground">{exam.revisionProgress}%</strong></span>
+                      </div>
+                      <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all"
+                          style={{ width: `${exam.revisionProgress}%` }}
+                        />
+                      </div>
+                      {exam.topics && exam.topics.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {exam.topics.slice(0, 4).map((t, idx) => (
+                            <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded-md bg-background border border-border text-muted-foreground">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {exam.notes && (
+                        <p className="text-[11px] text-muted-foreground/90 italic pt-0.5">{exam.notes}</p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -857,6 +953,115 @@ Unit 3: Robotics Dynamics & Control
                   className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold"
                 >
                   Save Takeaway & Log
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD EXAM MODAL */}
+      {showAddExamModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+              <div className="flex items-center gap-2 text-foreground font-bold">
+                <Calendar className="h-5 w-5 text-primary" />
+                <span>Add Examination / Test Date</span>
+              </div>
+              <button
+                onClick={() => setShowAddExamModal(false)}
+                className="p-1 rounded-full text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateExam} className="space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-foreground block mb-1">Subject / Course Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Robotics Dynamics & Kinematics"
+                  value={newExamSubject}
+                  onChange={(e) => setNewExamSubject(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-foreground text-xs focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-foreground block mb-1">Exam Due Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={newExamDate}
+                  onChange={(e) => setNewExamDate(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-foreground text-xs focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-foreground block mb-1">Difficulty</label>
+                  <select
+                    value={newExamDifficulty}
+                    onChange={(e) => setNewExamDifficulty(e.target.value as any)}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background text-foreground text-xs"
+                  >
+                    <option value="Easy">Easy</option>
+                    <option value="Moderate">Moderate</option>
+                    <option value="Hard">Hard</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-foreground block mb-1">Initial Revision %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={newExamProgress}
+                    onChange={(e) => setNewExamProgress(Number(e.target.value))}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background text-foreground text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-foreground block mb-1">Topics to Cover (comma separated)</label>
+                <input
+                  type="text"
+                  placeholder="Euler-Lagrange, Jacobian Matrices, PID Control"
+                  value={newExamTopics}
+                  onChange={(e) => setNewExamTopics(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-foreground text-xs focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-foreground block mb-1">Preparation Notes (Optional)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Allowed formula sheet, hall number, or key focus areas..."
+                  value={newExamNotes}
+                  onChange={(e) => setNewExamNotes(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-foreground text-xs focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={() => setShowAddExamModal(false)}
+                  className="px-4 py-2 rounded-xl border border-border text-foreground hover:bg-muted font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 hover:opacity-95"
+                >
+                  Save Exam
                 </button>
               </div>
             </form>

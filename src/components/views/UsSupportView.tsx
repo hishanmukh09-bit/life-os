@@ -34,6 +34,8 @@ export function UsSupportView() {
     partnerUser,
     encouragements,
     checkins,
+    dailyPartnerNotes,
+    saveDailyNote,
     sendEncouragement,
     requestHelp
   } = useLifeOS();
@@ -43,8 +45,26 @@ export function UsSupportView() {
   const [helpNote, setHelpNote] = useState('');
   const [sentAlert, setSentAlert] = useState<string | null>(null);
 
-  // Partner's shared checkin if available
+  // Daily note for today
   const todayStr = new Date().toISOString().split('T')[0];
+  const partnerName = partnerUser?.name.split(' ')[0] || 'Partner';
+  const partnerDailyNote = dailyPartnerNotes.find(n => n.fromUserId !== currentUser.id && n.date === todayStr);
+  const myDailyNote = dailyPartnerNotes.find(n => n.fromUserId === currentUser.id && n.date === todayStr);
+
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(myDailyNote?.note || '');
+  const [noteEmoji, setNoteEmoji] = useState(myDailyNote?.moodEmoji || '💌');
+
+  const handleSaveDailyNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noteDraft.trim()) return;
+    saveDailyNote(noteDraft.trim(), noteEmoji);
+    setIsEditingNote(false);
+    setSentAlert('Daily note saved and synced with your partner!');
+    setTimeout(() => setSentAlert(null), 3000);
+  };
+
+  // Partner's shared checkin if available
   const partnerCheckin = checkins.find(c => c.userId === partnerUser?.id && c.date === todayStr && c.visibility === 'SHARED');
 
   const handleSendEncouragement = (e: React.FormEvent) => {
@@ -89,12 +109,118 @@ export function UsSupportView() {
         </div>
       </div>
 
-      {sentAlert && (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold animate-in fade-in flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4" />
-          <span>{sentAlert}</span>
+      {/* DAILY NOTE FOR EACH OTHER */}
+      <div className="rounded-3xl border border-rose-500/25 bg-gradient-to-br from-rose-500/5 via-card to-card p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
+            <Heart className="h-5 w-5 fill-rose-500/20" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-foreground">Daily Note for Each Other</h2>
+            <p className="text-xs text-muted-foreground">A special daily thought, reminder, or love note synchronized between you two.</p>
+          </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Note FROM Partner */}
+          <div className="p-4 rounded-2xl bg-card border border-border/70 shadow-xs flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between border-b border-border/40 pb-2">
+              <span className="text-xs font-bold text-foreground">💌 Note from {partnerName} for you</span>
+              {partnerDailyNote && (
+                <span className="text-[10px] text-muted-foreground">
+                  {new Date(partnerDailyNote.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+            <div className="py-2 flex-1">
+              {partnerDailyNote ? (
+                <div className="space-y-1">
+                  <div className="text-xl">{partnerDailyNote.moodEmoji || '❤️'}</div>
+                  <p className="text-xs sm:text-sm text-foreground font-medium whitespace-pre-wrap leading-relaxed">
+                    &ldquo;{partnerDailyNote.note}&rdquo;
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-muted-foreground text-xs space-y-1">
+                  <Smile className="h-5 w-5 mx-auto opacity-40" />
+                  <p>No note left by {partnerName} yet today.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Note TO Partner */}
+          <div className="p-4 rounded-2xl bg-card border border-border/70 shadow-xs flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between border-b border-border/40 pb-2">
+              <span className="text-xs font-bold text-foreground">✍️ Your note for {partnerName}</span>
+              {!isEditingNote && myDailyNote && (
+                <button
+                  onClick={() => {
+                    setNoteDraft(myDailyNote.note);
+                    setNoteEmoji(myDailyNote.moodEmoji || '💌');
+                    setIsEditingNote(true);
+                  }}
+                  className="text-[11px] font-bold text-primary hover:underline"
+                >
+                  Edit Note
+                </button>
+              )}
+            </div>
+            <div className="py-2 flex-1">
+              {isEditingNote || !myDailyNote ? (
+                <form onSubmit={handleSaveDailyNote} className="space-y-3">
+                  <textarea
+                    rows={3}
+                    placeholder={`Write a thoughtful note for ${partnerName} today...`}
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background text-xs text-foreground focus:ring-2 focus:ring-rose-500/30 resize-none"
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1">
+                      {['💌', '❤️', '✨', '💪', '☕', '🌟'].map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setNoteEmoji(emoji)}
+                          className={`p-1 text-sm rounded-lg hover:scale-110 transition-transform ${noteEmoji === emoji ? 'bg-rose-500/20 ring-1 ring-rose-500' : ''}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {myDailyNote && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingNote(false)}
+                          className="px-2.5 py-1 rounded-xl text-xs text-muted-foreground hover:bg-muted"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 rounded-xl bg-rose-500 text-white font-bold text-xs shadow-xs hover:bg-rose-600 transition-colors"
+                      >
+                        Save Note
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-1">
+                  <div className="text-xl">{myDailyNote.moodEmoji || '💌'}</div>
+                  <p className="text-xs sm:text-sm text-foreground font-medium whitespace-pre-wrap leading-relaxed">
+                    &ldquo;{myDailyNote.note}&rdquo;
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         

@@ -429,6 +429,18 @@ export interface Encouragement {
   read: boolean;
 }
 
+export interface DailyPartnerNote {
+  id: string;
+  spaceId: string;
+  fromUserId: string;
+  fromUserName: string;
+  toUserId: string;
+  date: string; // YYYY-MM-DD
+  note: string;
+  moodEmoji?: string;
+  updatedAt: string;
+}
+
 export interface HelpRequest {
   id: string;
   spaceId: string;

@@ -43,27 +43,15 @@ export function Sidebar() {
 
   const NAV_ITEMS: NavItem[] = [
     { id: 'HOME', label: 'Home', icon: Home },
-    { id: 'TIMELINE', label: 'Day Timeline', icon: Clock },
-    { id: 'MY_DAY', label: 'My Day Routines', icon: Sun },
     { id: 'TASKS', label: 'Tasks & Proof', icon: CheckSquare, badge: pendingTasks },
-    { id: 'PROJECTS', label: 'Project Mode', icon: FolderKanban },
-    { id: 'SCHEDULE', label: 'Class Timetable', icon: Calendar },
-    { id: 'TRACK', label: 'Track & Wellness', icon: Activity },
-    { id: 'WORKOUT', label: 'Workouts', icon: Dumbbell },
-    { id: 'FOOD', label: 'Food & Meals', icon: Utensils },
     { id: 'STUDY', label: 'Study & Exams', icon: GraduationCap },
     { id: 'HABITS', label: 'Habits', icon: Flame },
     { id: 'GOALS', label: 'Goals (Me & Us)', icon: Target },
-    { id: 'PROGRESS', label: 'Trends & Analytics', icon: LineChart },
     { id: 'CALENDAR', label: 'Shared Calendar', icon: CalendarDays },
     { id: 'GALLERY', label: 'Our Photo Gallery', icon: Camera },
-    { id: 'GROWTH', label: 'Skills & Reading', icon: Award },
     { id: 'FINANCE', label: 'Finance & Trips', icon: CreditCard, badge: pendingExpenses || undefined },
-    { id: 'US', label: 'Shared Space', icon: Users, badge: unreadEncouragements || undefined },
+    { id: 'US', label: 'Our Shared Space', icon: Users, badge: unreadEncouragements || undefined },
     { id: 'JOURNAL', label: 'Private Journal', icon: BookOpen },
-    { id: 'MEMORIES', label: 'Memories', icon: Camera },
-    { id: 'LIFE_ADMIN', label: 'Life Admin', icon: FolderLock },
-    { id: 'AI_COACH', label: 'AI Life Coach', icon: Bot },
     { id: 'SETTINGS', label: 'Settings', icon: Settings },
   ];
 
