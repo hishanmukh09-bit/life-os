@@ -68,6 +68,7 @@ import {
 import { generateId } from './utils';
 import { AIService } from './ai-service';
 import { reminderEngine } from './reminder-engine';
+import { WEBSTORAGE_KEYS, getWebStorage, setWebStorage } from './webstorage';
 
 export interface LightboxData {
   url: string;
@@ -341,7 +342,189 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Sync with persistent SQLite database on mount or user/space change
+  // Hydrate all state from permanent browser WebStorage on mount
+  const [isWebStorageReady, setIsWebStorageReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // 1. Permanent tasks
+    const storedTasks = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TASKS, []);
+    const fallbackTasks = storedTasks.length > 0 ? storedTasks : getWebStorage<TaskItem[]>('lifeos_tasks', []);
+    if (fallbackTasks.length > 0) {
+      setTasks(fallbackTasks);
+    }
+
+    const storedTrash = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TRASH_TASKS, []);
+    if (storedTrash.length > 0) setTrashTasks(storedTrash);
+
+    // 2. Habits, projects, and goals
+    const storedHabits = getWebStorage<Habit[]>(WEBSTORAGE_KEYS.HABITS, []);
+    if (storedHabits.length > 0) setHabits(storedHabits);
+
+    const storedProjects = getWebStorage<ProjectItem[]>(WEBSTORAGE_KEYS.PROJECTS, []);
+    if (storedProjects.length > 0) setProjects(storedProjects);
+
+    const storedGoals = getWebStorage<Goal[]>(WEBSTORAGE_KEYS.GOALS, []);
+    if (storedGoals.length > 0) setGoals(storedGoals);
+
+    // 3. Wellness & Daily
+    const storedWater = getWebStorage<number>(WEBSTORAGE_KEYS.WATER, 0);
+    if (storedWater > 0) setWaterIntake(storedWater);
+
+    const storedSleep = getWebStorage<SleepLog[]>(WEBSTORAGE_KEYS.SLEEP, []);
+    if (storedSleep.length > 0) setSleepLogs(storedSleep);
+
+    const storedMeals = getWebStorage<MealItem[]>(WEBSTORAGE_KEYS.MEALS, []);
+    if (storedMeals.length > 0) setMeals(storedMeals);
+
+    const storedWorkouts = getWebStorage<WorkoutLog[]>(WEBSTORAGE_KEYS.WORKOUTS, []);
+    if (storedWorkouts.length > 0) setWorkouts(storedWorkouts);
+
+    const storedCheckins = getWebStorage<DailyCheckin[]>(WEBSTORAGE_KEYS.CHECKINS, []);
+    if (storedCheckins.length > 0) setCheckins(storedCheckins);
+
+    // 4. Study & Academics
+    const storedSubjects = getWebStorage<StudySubject[]>(WEBSTORAGE_KEYS.STUDY_SUBJECTS, []);
+    if (storedSubjects.length > 0) setStudySubjects(storedSubjects);
+
+    const storedExams = getWebStorage<Exam[]>(WEBSTORAGE_KEYS.EXAMS, []);
+    if (storedExams.length > 0) setExams(storedExams);
+
+    const storedSessions = getWebStorage<StudySession[]>(WEBSTORAGE_KEYS.STUDY_SESSIONS, []);
+    if (storedSessions.length > 0) setStudySessions(storedSessions);
+
+    const storedClasses = getWebStorage<ClassScheduleItem[]>(WEBSTORAGE_KEYS.CLASS_SCHEDULE, []);
+    if (storedClasses.length > 0) setClassSchedule(storedClasses);
+
+    // 5. Admin & Lists
+    const storedShopping = getWebStorage<ShoppingItem[]>(WEBSTORAGE_KEYS.SHOPPING, []);
+    if (storedShopping.length > 0) setShoppingItems(storedShopping);
+
+    const storedLifeAdmin = getWebStorage<LifeAdminItem[]>(WEBSTORAGE_KEYS.LIFE_ADMIN, []);
+    if (storedLifeAdmin.length > 0) setLifeAdminItems(storedLifeAdmin);
+
+    const storedMemories = getWebStorage<MemoryItem[]>(WEBSTORAGE_KEYS.MEMORIES, []);
+    if (storedMemories.length > 0) setMemories(storedMemories);
+
+    const storedTopThree = getWebStorage<string[]>(WEBSTORAGE_KEYS.TOP_THREE, []);
+    if (storedTopThree.length > 0) setTodaysTopThree(storedTopThree);
+
+    const storedOneThing = getWebStorage<string | null>(WEBSTORAGE_KEYS.ONE_THING, null);
+    if (storedOneThing) setOneThingId(storedOneThing);
+
+    const storedUser = getWebStorage<UserProfile | null>(WEBSTORAGE_KEYS.CURRENT_USER, null);
+    if (storedUser) setCurrentUser(storedUser);
+
+    const storedSpace = getWebStorage<Space | null>(WEBSTORAGE_KEYS.CURRENT_SPACE, null);
+    if (storedSpace) setCurrentSpace(storedSpace);
+
+    setIsWebStorageReady(true);
+  }, []);
+
+  // Multi-tab synchronization through WebStorage
+  useEffect(() => {
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === WEBSTORAGE_KEYS.TASKS && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setTasks(parsed);
+        } catch {}
+      }
+      if (e.key === WEBSTORAGE_KEYS.TRASH_TASKS && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setTrashTasks(parsed);
+        } catch {}
+      }
+      if (e.key === WEBSTORAGE_KEYS.HABITS && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setHabits(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
+  }, []);
+
+  // Reactive background persistence to WebStorage
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.TASKS, tasks);
+  }, [tasks, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, trashTasks);
+  }, [trashTasks, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.HABITS, habits);
+  }, [habits, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.PROJECTS, projects);
+  }, [projects, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.GOALS, goals);
+  }, [goals, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.SHOPPING, shoppingItems);
+  }, [shoppingItems, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, lifeAdminItems);
+  }, [lifeAdminItems, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, studySubjects);
+  }, [studySubjects, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.EXAMS, exams);
+  }, [exams, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.WATER, waterIntake);
+  }, [waterIntake, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.SLEEP, sleepLogs);
+  }, [sleepLogs, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.MEALS, meals);
+  }, [meals, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.WORKOUTS, workouts);
+  }, [workouts, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.CURRENT_USER, currentUser);
+  }, [currentUser, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.CURRENT_SPACE, currentSpace);
+  }, [currentSpace, isWebStorageReady]);
+
+  // Sync with persistent SQLite database on mount or user/space change without losing WebStorage tasks
   useEffect(() => {
     let isMounted = true;
     async function loadDbTasks() {
@@ -350,15 +533,43 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.tasks) && isMounted) {
-            setTasks(data.tasks);
+            setTasks(prevTasks => {
+              const taskMap = new Map<string, TaskItem>();
+              const localTasks = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TASKS, prevTasks);
+              
+              // 1. Add server tasks
+              data.tasks.forEach((t: TaskItem) => taskMap.set(t.id, t));
+              
+              // 2. Merge local tasks (preserve local modifications & newly added tasks)
+              localTasks.forEach((t: TaskItem) => {
+                const existing = taskMap.get(t.id);
+                if (!existing) {
+                  taskMap.set(t.id, t);
+                } else {
+                  const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+                  const localTime = new Date(t.updatedAt || t.createdAt || 0).getTime();
+                  if (localTime >= existingTime) {
+                    taskMap.set(t.id, t);
+                  }
+                }
+              });
+
+              // Filter out any tasks that are in trash
+              const trash = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TRASH_TASKS, []);
+              const trashIds = new Set(trash.map(tr => tr.id));
+              const merged = Array.from(taskMap.values()).filter(t => !trashIds.has(t.id));
+
+              setWebStorage(WEBSTORAGE_KEYS.TASKS, merged);
+              return merged;
+            });
           }
         }
       } catch (e) {
-        // Fallback to memory
+        // Fallback to permanent WebStorage - zero data loss
       }
     }
     loadDbTasks();
-    const interval = setInterval(loadDbTasks, 3000);
+    const interval = setInterval(loadDbTasks, 4000);
     const onFocus = () => loadDbTasks();
     window.addEventListener('focus', onFocus);
     return () => { 
@@ -390,22 +601,28 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     return await reminderEngine.requestPermission();
   };
 
-  // Immediate Persistent Task Creation
+  // Immediate Persistent Task Creation with instant WebStorage write
   const addTask = async (taskData: Omit<TaskItem, 'id' | 'spaceId' | 'creatorId' | 'createdAt' | 'updatedAt'>) => {
     const id = generateId('task');
+    const now = new Date().toISOString();
     const newTask: TaskItem = {
       ...taskData,
       id,
       spaceId: currentSpace.id,
       creatorId: currentUser.id,
       assignedToId: taskData.assignedToId || currentUser.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     };
-    // 1. Optimistic instant React state
-    setTasks(prev => [newTask, ...prev]);
 
-    // 2. Immediate SQLite database persistence
+    // 1. Instant React state and synchronous WebStorage persistence
+    setTasks(prev => {
+      const updated = [newTask, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
+
+    // 2. Background SQLite database persistence
     try {
       await fetch('/api/tasks', {
         method: 'POST',
@@ -413,7 +630,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(newTask)
       });
     } catch (e) {
-      console.error('Failed to persist task to SQLite DB:', e);
+      console.warn('Backend SQLite sync offline, preserved permanently in WebStorage');
     }
   };
 
@@ -429,29 +646,35 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     }
 
     const isDone = target.status === 'COMPLETED';
+    const now = new Date().toISOString();
     const aiVerification = proofImg 
       ? AIService.verifyPhotoProof(target.category, target.title, proofImg) 
       : undefined;
 
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        return {
-          ...t,
-          status: isDone ? 'TODO' : 'COMPLETED',
-          completedAt: isDone ? undefined : new Date().toISOString(),
-          proof: proofImg ? {
-            id: generateId('proof'),
-            taskId,
-            imageUrl: proofImg,
-            uploadedBy: currentUser.name.split(' ')[0],
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            visibility: t.visibility,
-            aiVerification
-          } : t.proof
-        };
-      }
-      return t;
-    }));
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === taskId) {
+          return {
+            ...t,
+            status: (isDone ? 'TODO' : 'COMPLETED') as TaskItem['status'],
+            completedAt: isDone ? undefined : now,
+            updatedAt: now,
+            proof: proofImg ? {
+              id: generateId('proof'),
+              taskId,
+              imageUrl: proofImg,
+              uploadedBy: currentUser.name.split(' ')[0],
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              visibility: t.visibility,
+              aiVerification
+            } : t.proof
+          };
+        }
+        return t;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
 
     // Immediate DB synchronization
     fetch('/api/tasks', {
@@ -477,8 +700,13 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     const snoozeTarget = new Date(Date.now() + minutes * 60 * 1000);
     const newTime = snoozeTarget.toTimeString().substring(0, 5);
     const newDate = snoozeTarget.toISOString().split('T')[0];
+    const now = new Date().toISOString();
 
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime } : t));
+    setTasks(prev => {
+      const updated = prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime, updatedAt: now } : t);
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
 
     fetch('/api/tasks', {
       method: 'PUT',
@@ -493,7 +721,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
   // Reschedule task date & time
   const rescheduleTask = (taskId: string, newDate: string, newTime?: string) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime || t.dueTime } : t));
+    const now = new Date().toISOString();
+    setTasks(prev => {
+      const updated = prev.map(t => t.id === taskId ? { ...t, dueDate: newDate, dueTime: newTime || t.dueTime, updatedAt: now } : t);
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
 
     fetch('/api/tasks', {
       method: 'PUT',
@@ -511,8 +744,17 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = (taskId: string) => {
     const target = tasks.find(t => t.id === taskId);
     if (target) {
-      setTrashTasks(prev => [{ ...target, deletedAt: new Date().toISOString() }, ...prev]);
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      const deletedItem = { ...target, deletedAt: new Date().toISOString() };
+      setTrashTasks(prev => {
+        const updatedTrash = [deletedItem, ...prev];
+        setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
+        return updatedTrash;
+      });
+      setTasks(prev => {
+        const updated = prev.filter(t => t.id !== taskId);
+        setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+        return updated;
+      });
 
       fetch(`/api/tasks?id=${taskId}`, { method: 'DELETE' }).catch(() => {});
     }
@@ -521,8 +763,17 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const restoreTask = (taskId: string) => {
     const target = trashTasks.find(t => t.id === taskId);
     if (target) {
-      setTrashTasks(prev => prev.filter(t => t.id !== taskId));
-      setTasks(prev => [target, ...prev]);
+      const restored = { ...target, deletedAt: undefined, updatedAt: new Date().toISOString() };
+      setTrashTasks(prev => {
+        const updatedTrash = prev.filter(t => t.id !== taskId);
+        setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
+        return updatedTrash;
+      });
+      setTasks(prev => {
+        const updated = [restored, ...prev];
+        setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+        return updated;
+      });
 
       fetch('/api/tasks', {
         method: 'PUT',
@@ -536,6 +787,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const resetToCleanSlate = () => {
     setIsCleanMode(true);
     setTasks([]);
+    setTrashTasks([]);
     setHabits([]);
     setCheckins([]);
     setStudySubjects([]);
@@ -548,6 +800,14 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     setLifeAdminItems([]);
     setTodaysTopThree([]);
     setOneThingId(null);
+    setWebStorage(WEBSTORAGE_KEYS.TASKS, []);
+    setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, []);
+    setWebStorage(WEBSTORAGE_KEYS.HABITS, []);
+    setWebStorage(WEBSTORAGE_KEYS.PROJECTS, []);
+    setWebStorage(WEBSTORAGE_KEYS.GOALS, []);
+    setWebStorage(WEBSTORAGE_KEYS.SHOPPING, []);
+    setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, []);
+    setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, []);
   };
 
   const loadDemoData = () => {
@@ -561,43 +821,63 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     setMemories(INITIAL_MEMORIES);
     setShoppingItems(INITIAL_SHOPPING);
     setLifeAdminItems(INITIAL_LIFE_ADMIN);
+    setWebStorage(WEBSTORAGE_KEYS.TASKS, INITIAL_TASKS);
+    setWebStorage(WEBSTORAGE_KEYS.HABITS, INITIAL_HABITS);
+    setWebStorage(WEBSTORAGE_KEYS.GOALS, INITIAL_GOALS);
+    setWebStorage(WEBSTORAGE_KEYS.SHOPPING, INITIAL_SHOPPING);
+    setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, INITIAL_LIFE_ADMIN);
+    setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, INITIAL_STUDY_SUBJECTS);
   };
 
   const deleteTaskProof = (taskId: string) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, proof: undefined } : t));
+    setTasks(prev => {
+      const updated = prev.map(t => t.id === taskId ? { ...t, proof: undefined, updatedAt: new Date().toISOString() } : t);
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
   };
 
   const replaceTaskProof = (taskId: string, newUrl: string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        const aiVerification = AIService.verifyPhotoProof(t.category, t.title, newUrl);
-        return {
-          ...t,
-          proof: {
-            id: generateId('proof'),
-            taskId,
-            imageUrl: newUrl,
-            uploadedBy: currentUser.name.split(' ')[0],
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            visibility: t.visibility,
-            aiVerification
-          }
-        };
-      }
-      return t;
-    }));
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === taskId) {
+          const aiVerification = AIService.verifyPhotoProof(t.category, t.title, newUrl);
+          return {
+            ...t,
+            updatedAt: new Date().toISOString(),
+            proof: {
+              id: generateId('proof'),
+              taskId,
+              imageUrl: newUrl,
+              uploadedBy: currentUser.name.split(' ')[0],
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              visibility: t.visibility,
+              aiVerification
+            }
+          };
+        }
+        return t;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
   };
 
   const toggleTaskSubtask = (taskId: string, subtaskId: string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId && t.subtasks) {
-        return {
-          ...t,
-          subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, completed: !s.completed } : s)
-        };
-      }
-      return t;
-    }));
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === taskId && t.subtasks) {
+          return {
+            ...t,
+            updatedAt: new Date().toISOString(),
+            subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, completed: !s.completed } : s)
+          };
+        }
+        return t;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
+      return updated;
+    });
   };
 
   const toggleHabit = (habitId: string) => {
