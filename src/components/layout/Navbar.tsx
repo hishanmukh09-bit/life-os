@@ -50,7 +50,8 @@ export function Navbar() {
     setAccentColor, 
     setTheme,
     setActiveView,
-    cloudSyncStatus
+    cloudSyncStatus,
+    requestNotificationPermission
   } = useLifeOS();
   
   const [copied, setCopied] = useState(false);
@@ -59,6 +60,26 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsList, setNotificationsList] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
+
+  const handleRequestNotifications = async () => {
+    const res = await requestNotificationPermission();
+    setNotifPermission(res);
+    if (res === 'granted') {
+      try {
+        new Notification('🔔 Real-Time Notifications Enabled!', {
+          body: 'LifeOS will alert you across devices when tasks are due or synchronized.',
+          icon: '/favicon.ico'
+        });
+      } catch {}
+    }
+  };
 
   const loadNotifications = async () => {
     try {
@@ -173,6 +194,26 @@ export function Navbar() {
               {cloudSyncStatus === 'connected' ? 'Live' : cloudSyncStatus === 'connecting' ? 'Connecting' : 'Offline'}
             </span>
           </div>
+
+          {/* Real Web Notification Permission Button */}
+          <button
+            onClick={handleRequestNotifications}
+            title={
+              notifPermission === 'granted'
+                ? 'Real-Time Notifications Active: You will receive native alerts on phone & laptop.'
+                : 'Click to enable real-time device notifications for due tasks and reminders'
+            }
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
+              notifPermission === 'granted'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 animate-pulse'
+            }`}
+          >
+            <Bell className="h-3.5 w-3.5" />
+            <span className="hidden md:inline font-semibold">
+              {notifPermission === 'granted' ? 'Alerts On' : 'Enable Alerts'}
+            </span>
+          </button>
 
           {/* Quick Partner Awareness Pill */}
           {partnerUser && (

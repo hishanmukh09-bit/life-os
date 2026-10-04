@@ -252,10 +252,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   const [activeReminderAlert, setActiveReminderAlert] = useState<any>(null);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
 
-  // Fresh refs for CloudSync event listeners
-  const tasksRef = React.useRef(tasks);
-  tasksRef.current = tasks;
-
   // Lightbox
   const [lightbox, setLightbox] = useState<LightboxData | null>(null);
 
@@ -279,6 +275,42 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     wakeTargetTime: '07:30',
     waterTargetMl: 2500
   }) : null;
+
+  // Fresh refs for CloudSync full state synchronization
+  const tasksRef = React.useRef(tasks);
+  tasksRef.current = tasks;
+  const habitsRef = React.useRef(habits);
+  habitsRef.current = habits;
+  const projectsRef = React.useRef(projects);
+  projectsRef.current = projects;
+  const goalsRef = React.useRef(goals);
+  goalsRef.current = goals;
+  const shoppingRef = React.useRef(shoppingItems);
+  shoppingRef.current = shoppingItems;
+  const lifeAdminRef = React.useRef(lifeAdminItems);
+  lifeAdminRef.current = lifeAdminItems;
+  const waterRef = React.useRef(waterIntake);
+  waterRef.current = waterIntake;
+  const sleepRef = React.useRef(sleepLogs);
+  sleepRef.current = sleepLogs;
+  const mealsRef = React.useRef(meals);
+  mealsRef.current = meals;
+  const workoutsRef = React.useRef(workouts);
+  workoutsRef.current = workouts;
+  const memoriesRef = React.useRef(memories);
+  memoriesRef.current = memories;
+  const checkinsRef = React.useRef(checkins);
+  checkinsRef.current = checkins;
+  const expensesRef = React.useRef(sharedExpenses);
+  expensesRef.current = sharedExpenses;
+  const tripsRef = React.useRef(trips);
+  tripsRef.current = trips;
+  const subjectsRef = React.useRef(studySubjects);
+  subjectsRef.current = studySubjects;
+  const examsRef = React.useRef(exams);
+  examsRef.current = exams;
+  const sessionsRef = React.useRef(studySessions);
+  sessionsRef.current = studySessions;
 
   // Sync theme & accent attribute on document
   useEffect(() => {
@@ -355,11 +387,17 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // 1. Permanent tasks
+    // 1. Permanent tasks (only user-created, zero auto-generated)
     const storedTasks = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TASKS, []);
     const fallbackTasks = storedTasks.length > 0 ? storedTasks : getWebStorage<TaskItem[]>('lifeos_tasks', []);
-    if (fallbackTasks.length > 0) {
-      setTasks(fallbackTasks);
+    const demoTaskIds = new Set(['task_1', 'task_2', 'task_3', 'task_4', 'task_5', 'task_6']);
+    const realUserTasks = fallbackTasks.filter(t => !demoTaskIds.has(t.id));
+    if (realUserTasks.length > 0) {
+      setTasks(realUserTasks);
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, realUserTasks);
+    } else {
+      setTasks([]);
+      setWebStorage(WEBSTORAGE_KEYS.TASKS, []);
     }
 
     const storedTrash = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TRASH_TASKS, []);
@@ -413,6 +451,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
     const storedMemories = getWebStorage<MemoryItem[]>(WEBSTORAGE_KEYS.MEMORIES, []);
     if (storedMemories.length > 0) setMemories(storedMemories);
+
+    const storedExpenses = getWebStorage<SharedExpense[]>(WEBSTORAGE_KEYS.SHARED_EXPENSES, []);
+    if (storedExpenses.length > 0) setSharedExpenses(storedExpenses);
+
+    const storedTrips = getWebStorage<TripItem[]>(WEBSTORAGE_KEYS.TRIPS, []);
+    if (storedTrips.length > 0) setTrips(storedTrips);
 
     const storedTopThree = getWebStorage<string[]>(WEBSTORAGE_KEYS.TOP_THREE, []);
     if (storedTopThree.length > 0) setTodaysTopThree(storedTopThree);
@@ -528,6 +572,26 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, sharedExpenses);
+  }, [sharedExpenses, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.TRIPS, trips);
+  }, [trips, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, studySessions);
+  }, [studySessions, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
+    setWebStorage(WEBSTORAGE_KEYS.CLASS_SCHEDULE, classSchedule);
+  }, [classSchedule, isWebStorageReady]);
+
+  useEffect(() => {
+    if (!isWebStorageReady) return;
     setWebStorage(WEBSTORAGE_KEYS.CURRENT_USER, currentUser);
   }, [currentUser, isWebStorageReady]);
 
@@ -603,19 +667,35 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         if (!action || !data) return;
 
         if (action === 'SYNC_REQUEST') {
-          if (tasksRef.current && tasksRef.current.length > 0) {
-            broadcastSyncAction(currentSpace.id, 'FULL_SYNC', { tasks: tasksRef.current });
-          }
+          broadcastSyncAction(currentSpace.id, 'FULL_SYNC', {
+            tasks: tasksRef.current,
+            habits: habitsRef.current,
+            projects: projectsRef.current,
+            goals: goalsRef.current,
+            shoppingItems: shoppingRef.current,
+            lifeAdminItems: lifeAdminRef.current,
+            waterIntake: waterRef.current,
+            sleepLogs: sleepRef.current,
+            meals: mealsRef.current,
+            workouts: workoutsRef.current,
+            memories: memoriesRef.current,
+            checkins: checkinsRef.current,
+            sharedExpenses: expensesRef.current,
+            trips: tripsRef.current,
+            studySubjects: subjectsRef.current,
+            exams: examsRef.current,
+            studySessions: sessionsRef.current
+          });
           return;
         }
 
         if (action === 'FULL_SYNC') {
-          const remoteTasks = data.tasks as TaskItem[];
-          if (Array.isArray(remoteTasks) && remoteTasks.length > 0) {
+          // 1. Merge Tasks
+          if (Array.isArray(data.tasks) && data.tasks.length > 0) {
             setTasks(prev => {
               const taskMap = new Map<string, TaskItem>();
               prev.forEach(t => taskMap.set(t.id, t));
-              remoteTasks.forEach(rt => {
+              data.tasks.forEach((rt: TaskItem) => {
                 const existing = taskMap.get(rt.id);
                 if (!existing) {
                   taskMap.set(rt.id, rt);
@@ -636,6 +716,128 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
               const merged = Array.from(taskMap.values());
               setWebStorage(WEBSTORAGE_KEYS.TASKS, merged);
               return merged;
+            });
+          }
+
+          // 2. Merge Habits
+          if (Array.isArray(data.habits) && data.habits.length > 0) {
+            setHabits(prev => {
+              const map = new Map<string, Habit>();
+              prev.forEach(h => map.set(h.id, h));
+              data.habits.forEach((rh: Habit) => {
+                const existing = map.get(rh.id);
+                if (!existing || rh.logs.length >= existing.logs.length) {
+                  map.set(rh.id, rh);
+                }
+              });
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.HABITS, merged);
+              return merged;
+            });
+          }
+
+          // 3. Merge Shopping
+          if (Array.isArray(data.shoppingItems) && data.shoppingItems.length > 0) {
+            setShoppingItems(prev => {
+              const map = new Map<string, ShoppingItem>();
+              prev.forEach(s => map.set(s.id, s));
+              data.shoppingItems.forEach((rs: ShoppingItem) => map.set(rs.id, rs));
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.SHOPPING, merged);
+              return merged;
+            });
+          }
+
+          // 4. Merge Projects
+          if (Array.isArray(data.projects) && data.projects.length > 0) {
+            setProjects(prev => {
+              const map = new Map<string, ProjectItem>();
+              prev.forEach(p => map.set(p.id, p));
+              data.projects.forEach((rp: ProjectItem) => map.set(rp.id, rp));
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.PROJECTS, merged);
+              return merged;
+            });
+          }
+
+          // 5. Merge Goals
+          if (Array.isArray(data.goals) && data.goals.length > 0) {
+            setGoals(prev => {
+              const map = new Map<string, Goal>();
+              prev.forEach(g => map.set(g.id, g));
+              data.goals.forEach((rg: Goal) => map.set(rg.id, rg));
+              const merged = Array.from(map.values());
+              setWebStorage(WEBSTORAGE_KEYS.GOALS, merged);
+              return merged;
+            });
+          }
+
+          // 6. Merge Wellness & Logs
+          if (typeof data.waterIntake === 'number' && data.waterIntake > 0) {
+            setWaterIntake(w => Math.max(w, data.waterIntake));
+          }
+          if (Array.isArray(data.sleepLogs) && data.sleepLogs.length > 0) {
+            setSleepLogs(prev => {
+              const map = new Map<string, SleepLog>();
+              prev.forEach(s => map.set(s.id, s));
+              data.sleepLogs.forEach((rs: SleepLog) => map.set(rs.id, rs));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.meals) && data.meals.length > 0) {
+            setMeals(prev => {
+              const map = new Map<string, MealItem>();
+              prev.forEach(m => map.set(m.id, m));
+              data.meals.forEach((rm: MealItem) => map.set(rm.id, rm));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.workouts) && data.workouts.length > 0) {
+            setWorkouts(prev => {
+              const map = new Map<string, WorkoutLog>();
+              prev.forEach(w => map.set(w.id, w));
+              data.workouts.forEach((rw: WorkoutLog) => map.set(rw.id, rw));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.checkins) && data.checkins.length > 0) {
+            setCheckins(prev => {
+              const map = new Map<string, DailyCheckin>();
+              prev.forEach(c => map.set(`${c.userId}_${c.date}`, c));
+              data.checkins.forEach((rc: DailyCheckin) => map.set(`${rc.userId}_${rc.date}`, rc));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.sharedExpenses) && data.sharedExpenses.length > 0) {
+            setSharedExpenses(prev => {
+              const map = new Map<string, SharedExpense>();
+              prev.forEach(e => map.set(e.id, e));
+              data.sharedExpenses.forEach((re: SharedExpense) => map.set(re.id, re));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.memories) && data.memories.length > 0) {
+            setMemories(prev => {
+              const map = new Map<string, MemoryItem>();
+              prev.forEach(m => map.set(m.id, m));
+              data.memories.forEach((rm: MemoryItem) => map.set(rm.id, rm));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.lifeAdminItems) && data.lifeAdminItems.length > 0) {
+            setLifeAdminItems(prev => {
+              const map = new Map<string, LifeAdminItem>();
+              prev.forEach(a => map.set(a.id, a));
+              data.lifeAdminItems.forEach((ra: LifeAdminItem) => map.set(ra.id, ra));
+              return Array.from(map.values());
+            });
+          }
+          if (Array.isArray(data.trips) && data.trips.length > 0) {
+            setTrips(prev => {
+              const map = new Map<string, TripItem>();
+              prev.forEach(t => map.set(t.id, t));
+              data.trips.forEach((rt: TripItem) => map.set(rt.id, rt));
+              return Array.from(map.values());
             });
           }
           return;
@@ -770,6 +972,294 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
             return updated;
           });
+          return;
+        }
+
+        // Habit Real-Time Sync
+        if (action === 'HABIT_ADD') {
+          const newHabit = data as Habit;
+          if (newHabit?.id) {
+            setHabits(prev => {
+              if (prev.some(h => h.id === newHabit.id)) return prev;
+              const updated = [newHabit, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'HABIT_TOGGLE') {
+          const { habitId, currentStreak, bestStreak, logs } = data;
+          setHabits(prev => {
+            const updated = prev.map(h => h.id === habitId ? { ...h, currentStreak, bestStreak, logs } : h);
+            setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        // Wellness Real-Time Sync
+        if (action === 'WELLNESS_WATER') {
+          if (typeof data.total === 'number') {
+            setWaterIntake(data.total);
+            setWebStorage(WEBSTORAGE_KEYS.WATER, data.total);
+          }
+          return;
+        }
+
+        if (action === 'WELLNESS_SLEEP') {
+          const newLog = data as SleepLog;
+          if (newLog?.id) {
+            setSleepLogs(prev => {
+              if (prev.some(s => s.id === newLog.id)) return prev;
+              const updated = [newLog, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.SLEEP, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'WELLNESS_MEAL') {
+          const newMeal = data as MealItem;
+          if (newMeal?.id) {
+            setMeals(prev => {
+              if (prev.some(m => m.id === newMeal.id)) return prev;
+              const updated = [newMeal, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.MEALS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'WELLNESS_WORKOUT') {
+          const newWorkout = data as WorkoutLog;
+          if (newWorkout?.id) {
+            setWorkouts(prev => {
+              if (prev.some(w => w.id === newWorkout.id)) return prev;
+              const updated = [newWorkout, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.WORKOUTS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'WELLNESS_CHECKIN') {
+          const newCheckin = data as DailyCheckin;
+          if (newCheckin?.id) {
+            setCheckins(prev => {
+              const updated = [newCheckin, ...prev.filter(c => !(c.userId === newCheckin.userId && c.date === newCheckin.date))];
+              setWebStorage(WEBSTORAGE_KEYS.CHECKINS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        // Shopping & Admin Real-Time Sync
+        if (action === 'SHOPPING_ADD') {
+          const newItem = data as ShoppingItem;
+          if (newItem?.id) {
+            setShoppingItems(prev => {
+              if (prev.some(s => s.id === newItem.id)) return prev;
+              const updated = [newItem, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'SHOPPING_TOGGLE') {
+          setShoppingItems(prev => {
+            const updated = prev.map(s => s.id === data.id ? { ...s, completed: !s.completed } : s);
+            setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'ADMIN_ADD') {
+          const newAdmin = data as LifeAdminItem;
+          if (newAdmin?.id) {
+            setLifeAdminItems(prev => {
+              if (prev.some(a => a.id === newAdmin.id)) return prev;
+              const updated = [newAdmin, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'ADMIN_TOGGLE') {
+          setLifeAdminItems(prev => {
+            const updated = prev.map(a => a.id === data.id ? { ...a, status: (a.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED') as LifeAdminItem['status'] } : a);
+            setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
+            return updated;
+          });
+          return;
+        }
+
+        // Projects & Goals Real-Time Sync
+        if (action === 'PROJECT_ADD') {
+          const newProj = data as ProjectItem;
+          if (newProj?.id) {
+            setProjects(prev => {
+              if (prev.some(p => p.id === newProj.id)) return prev;
+              const updated = [...prev, newProj];
+              setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'PROJECT_MILESTONE_TOGGLE') {
+          setProjects(prev => {
+            const updated = prev.map(p => p.id === data.projectId ? {
+              ...p,
+              milestones: p.milestones.map(m => m.id === data.milestoneId ? { ...m, completed: !m.completed } : m)
+            } : p);
+            setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'GOAL_ADD') {
+          const newGoal = data as Goal;
+          if (newGoal?.id) {
+            setGoals(prev => {
+              if (prev.some(g => g.id === newGoal.id)) return prev;
+              const updated = [...prev, newGoal];
+              setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'GOAL_MILESTONE_TOGGLE') {
+          setGoals(prev => {
+            const updated = prev.map(g => g.id === data.goalId ? {
+              ...g,
+              milestones: g.milestones.map(m => m.id === data.milestoneId ? { ...m, completed: !m.completed } : m)
+            } : g);
+            setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        // Shared Expenses & Trips Real-Time Sync
+        if (action === 'EXPENSE_ADD') {
+          const newExp = data as SharedExpense;
+          if (newExp?.id) {
+            setSharedExpenses(prev => {
+              if (prev.some(e => e.id === newExp.id)) return prev;
+              const updated = [newExp, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'EXPENSE_SETTLE') {
+          setSharedExpenses(prev => {
+            const updated = prev.map(e => e.id === data.id ? { ...e, isSettled: !e.isSettled } : e);
+            setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
+            return updated;
+          });
+          return;
+        }
+
+        if (action === 'TRIP_ADD') {
+          const newTrip = data as TripItem;
+          if (newTrip?.id) {
+            setTrips(prev => {
+              if (prev.some(t => t.id === newTrip.id)) return prev;
+              const updated = [...prev, newTrip];
+              setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'TRIP_PACKING') {
+          setTrips(prev => {
+            const updated = prev.map(t => t.id === data.tripId ? {
+              ...t,
+              packingList: t.packingList.map(p => p.id === data.itemId ? { ...p, packed: !p.packed } : p)
+            } : t);
+            setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
+            return updated;
+          });
+          return;
+        }
+
+        // Memories & Connection Real-Time Sync
+        if (action === 'MEMORY_ADD') {
+          const newMem = data as MemoryItem;
+          if (newMem?.id) {
+            setMemories(prev => {
+              if (prev.some(m => m.id === newMem.id)) return prev;
+              const updated = [newMem, ...prev];
+              setWebStorage(WEBSTORAGE_KEYS.MEMORIES, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'ENCOURAGEMENT_SEND') {
+          const newEnc = data as Encouragement;
+          if (newEnc?.id) {
+            setEncouragements(prev => {
+              if (prev.some(e => e.id === newEnc.id)) return prev;
+              return [newEnc, ...prev];
+            });
+          }
+          return;
+        }
+
+        // Academics Real-Time Sync
+        if (action === 'STUDY_SUBJECT_ADD') {
+          const newSubj = data as StudySubject;
+          if (newSubj?.id) {
+            setStudySubjects(prev => {
+              if (prev.some(s => s.id === newSubj.id)) return prev;
+              const updated = [...prev, newSubj];
+              setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, updated);
+              return updated;
+            });
+          }
+          return;
+        }
+
+        if (action === 'STUDY_SESSION_ADD') {
+          const newSess = data as StudySession;
+          if (newSess?.id) {
+            setStudySessions(prev => [newSess, ...prev]);
+          }
+          return;
+        }
+
+        if (action === 'EXAM_ADD') {
+          const newExam = data as Exam;
+          if (newExam?.id) {
+            setExams(prev => {
+              if (prev.some(e => e.id === newExam.id)) return prev;
+              const updated = [...prev, newExam];
+              setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
+              return updated;
+            });
+          }
           return;
         }
       },
@@ -1163,27 +1653,37 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
   const toggleHabit = (habitId: string) => {
     const today = new Date().toISOString().split('T')[0];
-    setHabits(prev => prev.map(h => {
-      if (h.id === habitId) {
-        const existingLog = h.logs.find(l => l.date === today);
-        let newLogs = [...h.logs];
-        let newStreak = h.currentStreak;
-        if (existingLog) {
-          newLogs = newLogs.map(l => l.date === today ? { ...l, completed: !l.completed } : l);
-          newStreak = Math.max(0, existingLog.completed ? newStreak - 1 : newStreak + 1);
-        } else {
-          newLogs.push({ date: today, completed: true });
-          newStreak += 1;
+    let syncData: any = null;
+    setHabits(prev => {
+      const updated = prev.map(h => {
+        if (h.id === habitId) {
+          const existingLog = h.logs.find(l => l.date === today);
+          let newLogs = [...h.logs];
+          let newStreak = h.currentStreak;
+          if (existingLog) {
+            newLogs = newLogs.map(l => l.date === today ? { ...l, completed: !l.completed } : l);
+            newStreak = Math.max(0, existingLog.completed ? newStreak - 1 : newStreak + 1);
+          } else {
+            newLogs.push({ date: today, completed: true });
+            newStreak += 1;
+          }
+          const bestStreak = Math.max(newStreak, h.bestStreak);
+          syncData = { habitId, currentStreak: newStreak, bestStreak, logs: newLogs };
+          return {
+            ...h,
+            currentStreak: newStreak,
+            bestStreak,
+            logs: newLogs
+          };
         }
-        return {
-          ...h,
-          currentStreak: newStreak,
-          bestStreak: Math.max(newStreak, h.bestStreak),
-          logs: newLogs
-        };
-      }
-      return h;
-    }));
+        return h;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
+      return updated;
+    });
+    if (syncData) {
+      broadcastSyncAction(currentSpace.id, 'HABIT_TOGGLE', syncData);
+    }
   };
 
   const addHabit = (title: string, category: string, frequency: Habit['frequency']) => {
@@ -1201,11 +1701,21 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       logs: [],
       createdAt: new Date().toISOString()
     };
-    setHabits(prev => [...prev, newHabit]);
+    setHabits(prev => {
+      const updated = [...prev, newHabit];
+      setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'HABIT_ADD', newHabit);
   };
 
   const addWater = (amountMl: number) => {
-    setWaterIntake(prev => prev + amountMl);
+    setWaterIntake(prev => {
+      const total = prev + amountMl;
+      setWebStorage(WEBSTORAGE_KEYS.WATER, total);
+      broadcastSyncAction(currentSpace.id, 'WELLNESS_WATER', { total });
+      return total;
+    });
   };
 
   const logSleep = (bedtime: string, wakeTime: string, durationMinutes: number, quality: number, notes?: string) => {
@@ -1220,7 +1730,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       notes,
       visibility: 'SHARED'
     };
-    setSleepLogs(prev => [newLog, ...prev]);
+    setSleepLogs(prev => {
+      const updated = [newLog, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.SLEEP, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'WELLNESS_SLEEP', newLog);
   };
 
   const addMeal = (mealData: Omit<MealItem, 'id' | 'spaceId' | 'userId' | 'date'>) => {
@@ -1231,7 +1746,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       userId: currentUser.id,
       date: new Date().toISOString().split('T')[0]
     };
-    setMeals(prev => [newMeal, ...prev]);
+    setMeals(prev => {
+      const updated = [newMeal, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.MEALS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'WELLNESS_MEAL', newMeal);
   };
 
   const addWorkout = (workoutData: Omit<WorkoutLog, 'id' | 'spaceId' | 'userId' | 'date'>) => {
@@ -1242,7 +1762,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       userId: currentUser.id,
       date: new Date().toISOString().split('T')[0]
     };
-    setWorkouts(prev => [newWorkout, ...prev]);
+    setWorkouts(prev => {
+      const updated = [newWorkout, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.WORKOUTS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'WELLNESS_WORKOUT', newWorkout);
   };
 
   const logDailyCheckin = (checkinData: Omit<DailyCheckin, 'id' | 'spaceId' | 'userId' | 'date' | 'createdAt'>) => {
@@ -1255,7 +1780,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       date: today,
       createdAt: new Date().toISOString()
     };
-    setCheckins(prev => [newCheckin, ...prev.filter(c => !(c.userId === currentUser.id && c.date === today))]);
+    setCheckins(prev => {
+      const updated = [newCheckin, ...prev.filter(c => !(c.userId === currentUser.id && c.date === today))];
+      setWebStorage(WEBSTORAGE_KEYS.CHECKINS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'WELLNESS_CHECKIN', newCheckin);
   };
 
   const logCycle = (cycleData: Omit<CycleLog, 'id' | 'userId'>) => {
@@ -1279,25 +1809,34 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       targetHoursWeekly: targetHours,
       topics: []
     };
-    setStudySubjects(prev => [...prev, newSubj]);
+    setStudySubjects(prev => {
+      const updated = [...prev, newSubj];
+      setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'STUDY_SUBJECT_ADD', newSubj);
   };
 
   const updateTopicMastery = (subjectId: string, topicId: string, delta: number) => {
-    setStudySubjects(prev => prev.map(s => {
-      if (s.id === subjectId) {
-        return {
-          ...s,
-          topics: s.topics.map(t => {
-            if (t.id === topicId) {
-              const newMastery = Math.min(100, Math.max(0, t.masteryPercentage + delta));
-              return { ...t, masteryPercentage: newMastery };
-            }
-            return t;
-          })
-        };
-      }
-      return s;
-    }));
+    setStudySubjects(prev => {
+      const updated = prev.map(s => {
+        if (s.id === subjectId) {
+          return {
+            ...s,
+            topics: s.topics.map(t => {
+              if (t.id === topicId) {
+                const newMastery = Math.min(100, Math.max(0, t.masteryPercentage + delta));
+                return { ...t, masteryPercentage: newMastery };
+              }
+              return t;
+            })
+          };
+        }
+        return s;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, updated);
+      return updated;
+    });
   };
 
   const logStudySession = (durationMins: number, focusMode: StudySession['focusMode'], subjectName?: string, learned?: string, photo?: string) => {
@@ -1312,7 +1851,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       learnedTakeaway: learned,
       learnedPhotoUrl: photo
     };
-    setStudySessions(prev => [newSession, ...prev]);
+    setStudySessions(prev => {
+      const updated = [newSession, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'STUDY_SESSION_ADD', newSession);
   };
 
   const addExam = (examData: Omit<Exam, 'id' | 'spaceId' | 'userId'>) => {
@@ -1322,7 +1866,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       spaceId: currentSpace.id,
       userId: currentUser.id
     };
-    setExams(prev => [...prev, newExam]);
+    setExams(prev => {
+      const updated = [...prev, newExam];
+      setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'EXAM_ADD', newExam);
   };
 
   const addClassScheduleItem = (itemData: Omit<ClassScheduleItem, 'id'>) => {
@@ -1330,7 +1879,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       ...itemData,
       id: generateId('cs')
     };
-    setClassSchedule(prev => [...prev, newItem]);
+    setClassSchedule(prev => {
+      const updated = [...prev, newItem];
+      setWebStorage(WEBSTORAGE_KEYS.CLASS_SCHEDULE, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'CLASS_SCHEDULE_ADD', newItem);
   };
 
   // Project Actions
@@ -1347,35 +1901,48 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       isShared,
       milestones: []
     };
-    setProjects(prev => [...prev, newProj]);
+    setProjects(prev => {
+      const updated = [...prev, newProj];
+      setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'PROJECT_ADD', newProj);
   };
 
   const toggleProjectMilestone = (projectId: string, milestoneId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id === projectId) {
-        const updated = p.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m);
-        const comp = updated.filter(m => m.completed).length;
-        const pct = Math.round((comp / (updated.length || 1)) * 100);
-        return { ...p, milestones: updated, progress: pct };
-      }
-      return p;
-    }));
+    setProjects(prev => {
+      const updated = prev.map(p => {
+        if (p.id === projectId) {
+          const updatedMs = p.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m);
+          const comp = updatedMs.filter(m => m.completed).length;
+          const pct = Math.round((comp / (updatedMs.length || 1)) * 100);
+          return { ...p, milestones: updatedMs, progress: pct };
+        }
+        return p;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'PROJECT_MILESTONE_TOGGLE', { projectId, milestoneId });
   };
 
   const addMilestoneToProject = (projectId: string, title: string, taskTitles: string[]) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id === projectId) {
-        const newMs = {
-          id: generateId('ms'),
-          title,
-          completed: false,
-          tasks: taskTitles.map(t => ({ id: generateId('subt'), title: t, completed: false }))
-        };
-        const updated = [...p.milestones, newMs];
-        return { ...p, milestones: updated };
-      }
-      return p;
-    }));
+    setProjects(prev => {
+      const updated = prev.map(p => {
+        if (p.id === projectId) {
+          const newMs = {
+            id: generateId('ms'),
+            title,
+            completed: false,
+            tasks: taskTitles.map(t => ({ id: generateId('subt'), title: t, completed: false }))
+          };
+          return { ...p, milestones: [...p.milestones, newMs] };
+        }
+        return p;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
+      return updated;
+    });
   };
 
   // Shared Expenses
@@ -1392,24 +1959,39 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       isSettled: false,
       date: new Date().toISOString().split('T')[0]
     };
-    setSharedExpenses(prev => [newExp, ...prev]);
+    setSharedExpenses(prev => {
+      const updated = [newExp, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'EXPENSE_ADD', newExp);
   };
 
   const toggleSettleExpense = (id: string) => {
-    setSharedExpenses(prev => prev.map(e => e.id === id ? { ...e, isSettled: !e.isSettled } : e));
+    setSharedExpenses(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, isSettled: !e.isSettled } : e);
+      setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'EXPENSE_SETTLE', { id });
   };
 
   // Trips & Packing
   const togglePackingItem = (tripId: string, itemId: string) => {
-    setTrips(prev => prev.map(t => {
-      if (t.id === tripId) {
-        return {
-          ...t,
-          packingList: t.packingList.map(p => p.id === itemId ? { ...p, packed: !p.packed } : p)
-        };
-      }
-      return t;
-    }));
+    setTrips(prev => {
+      const updated = prev.map(t => {
+        if (t.id === tripId) {
+          return {
+            ...t,
+            packingList: t.packingList.map(p => p.id === itemId ? { ...p, packed: !p.packed } : p)
+          };
+        }
+        return t;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'TRIP_PACKING', { tripId, itemId });
   };
 
   const addTrip = (tripData: Omit<TripItem, 'id' | 'spaceId'>) => {
@@ -1418,7 +2000,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       id: generateId('trip'),
       spaceId: currentSpace.id
     };
-    setTrips(prev => [...prev, newTrip]);
+    setTrips(prev => {
+      const updated = [...prev, newTrip];
+      setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'TRIP_ADD', newTrip);
   };
 
   // Subscriptions & Documents
@@ -1477,19 +2064,29 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       creatorId: currentUser.id,
       progress: 0
     };
-    setGoals(prev => [...prev, newGoal]);
+    setGoals(prev => {
+      const updated = [...prev, newGoal];
+      setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'GOAL_ADD', newGoal);
   };
 
   const toggleMilestone = (goalId: string, milestoneId: string) => {
-    setGoals(prev => prev.map(g => {
-      if (g.id === goalId) {
-        const updatedMilestones = g.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m);
-        const completedCount = updatedMilestones.filter(m => m.completed).length;
-        const progress = Math.round((completedCount / (updatedMilestones.length || 1)) * 100);
-        return { ...g, milestones: updatedMilestones, progress };
-      }
-      return g;
-    }));
+    setGoals(prev => {
+      const updated = prev.map(g => {
+        if (g.id === goalId) {
+          const updatedMilestones = g.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m);
+          const completedCount = updatedMilestones.filter(m => m.completed).length;
+          const progress = Math.round((completedCount / (updatedMilestones.length || 1)) * 100);
+          return { ...g, milestones: updatedMilestones, progress };
+        }
+        return g;
+      });
+      setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'GOAL_MILESTONE_TOGGLE', { goalId, milestoneId });
   };
 
   const sendEncouragement = (message: string, emoji: string) => {
@@ -1506,6 +2103,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       read: false
     };
     setEncouragements(prev => [newEnc, ...prev]);
+    broadcastSyncAction(currentSpace.id, 'ENCOURAGEMENT_SEND', newEnc);
   };
 
   const requestHelp = (category: HelpRequest['category'], message?: string) => {
@@ -1524,6 +2122,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.MEMORIES, updated);
       return updated;
     });
+    broadcastSyncAction(currentSpace.id, 'MEMORY_ADD', newMem);
   };
 
   const addLittleThing = (thingData: Omit<LittleThing, 'id' | 'spaceId' | 'userId'>) => {
@@ -1537,7 +2136,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
   };
 
   const toggleShoppingItem = (id: string) => {
-    setShoppingItems(prev => prev.map(item => item.id === id ? { ...item, completed: !item.completed } : item));
+    setShoppingItems(prev => {
+      const updated = prev.map(item => item.id === id ? { ...item, completed: !item.completed } : item);
+      setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'SHOPPING_TOGGLE', { id });
   };
 
   const addShoppingItem = (title: string, category: string) => {
@@ -1551,7 +2155,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       addedByName: currentUser.name.split(' ')[0],
       createdAt: new Date().toISOString()
     };
-    setShoppingItems(prev => [newItem, ...prev]);
+    setShoppingItems(prev => {
+      const updated = [newItem, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'SHOPPING_ADD', newItem);
   };
 
   const addLifeAdminItem = (itemData: Omit<LifeAdminItem, 'id' | 'spaceId' | 'userId' | 'status'>) => {
@@ -1562,14 +2171,24 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       userId: currentUser.id,
       status: 'PENDING'
     };
-    setLifeAdminItems(prev => [newItem, ...prev]);
+    setLifeAdminItems(prev => {
+      const updated = [newItem, ...prev];
+      setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'ADMIN_ADD', newItem);
   };
 
   const toggleLifeAdminStatus = (id: string) => {
-    setLifeAdminItems(prev => prev.map(item => item.id === id ? {
-      ...item,
-      status: item.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED'
-    } : item));
+    setLifeAdminItems(prev => {
+      const updated = prev.map(item => item.id === id ? {
+        ...item,
+        status: (item.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED') as LifeAdminItem['status']
+      } : item);
+      setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
+      return updated;
+    });
+    broadcastSyncAction(currentSpace.id, 'ADMIN_TOGGLE', { id });
   };
 
   const addKnowledgeItem = (title: string, category: KnowledgeItem['category'], content: string, tags: string[]) => {

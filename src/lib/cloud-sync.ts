@@ -6,21 +6,7 @@
 
 export interface SyncPayload {
   senderDeviceId: string;
-  action:
-    | 'TASK_CREATE'
-    | 'TASK_TOGGLE'
-    | 'TASK_DELETE'
-    | 'TASK_RESTORE'
-    | 'TASK_SNOOZE'
-    | 'TASK_RESCHEDULE'
-    | 'TASK_PROOF_REPLACE'
-    | 'TASK_PROOF_DELETE'
-    | 'TASK_SUBTASK_TOGGLE'
-    | 'HABIT_TOGGLE'
-    | 'SHOPPING_TOGGLE'
-    | 'SHOPPING_ADD'
-    | 'SYNC_REQUEST'
-    | 'FULL_SYNC';
+  action: string;
   timestamp: string;
   data: any;
 }
