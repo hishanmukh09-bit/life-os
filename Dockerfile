@@ -1,5 +1,5 @@
 # Multi-stage production build for LIFE OS
-FROM node:24-alpine AS base
+FROM node:22-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -44,7 +44,5 @@ COPY --from=builder /app/package.json ./package.json
 USER nextjs
 
 EXPOSE 3000
-
-VOLUME ["/app/data", "/app/public/uploads"]
 
 CMD ["npm", "start"]
