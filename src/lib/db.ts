@@ -182,6 +182,18 @@ function initSchema(db: DatabaseSync) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS sync_items (
+      space_id TEXT NOT NULL,
+      collection TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      data_json TEXT,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (space_id, collection, item_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sync_items_seq ON sync_items (space_id, seq);
+
     CREATE TABLE IF NOT EXISTS sync_events (
       id TEXT PRIMARY KEY,
       space_id TEXT NOT NULL,
@@ -490,12 +502,16 @@ export const TaskDb = {
     return id;
   },
 
-  toggle(taskId: string, userId: string, userName: string, proofImg?: string) {
+  // status given = set exactly that (idempotent); omitted = flip (legacy callers)
+  toggle(taskId: string, userId: string, userName: string, proofImg?: string, status?: string) {
     const db = getDb();
     const task = AccessDb.getTaskForAccess(taskId, userId);
     if (!task) return { success: false, error: 'TASK_NOT_FOUND' };
 
-    const isCompleting = task.status !== 'COMPLETED';
+    const isCompleting = status ? status === 'COMPLETED' : task.status !== 'COMPLETED';
+    if (status && (status === 'COMPLETED') === (task.status === 'COMPLETED') && !proofImg) {
+      return { success: true, status: task.status };
+    }
 
     // Strict Part 14: IF proofRequired == true AND no proof exists/provided THEN reject
     const existingProof = db.prepare('SELECT * FROM task_proofs WHERE task_id = ?').get(taskId);
@@ -802,74 +818,59 @@ export const PatternDb = {
   }
 };
 
-// ------------------- REAL-TIME MULTI-DEVICE SYNC EVENTS DB -------------------
+// ------------------- MULTI-DEVICE SYNC STATE -------------------
+// One row per synced item (task, habit, note, ...). The server is the source of
+// truth; seq increases on every write so devices fetch only what changed.
 
-export interface StoredSyncEvent {
+export interface SyncItem {
+  collection: string;
   id: string;
-  space_id: string;
-  sender_device_id: string;
-  action: string;
-  payload_json: string;
-  created_at: string;
+  data?: any;
+  deleted?: boolean;
+  seq?: number;
 }
 
-export const SyncEventDb = {
-  record(spaceId: string, senderDeviceId: string, action: string, data: any) {
+export const SyncStateDb = {
+  upsert(spaceId: string, items: SyncItem[]) {
     const db = getDb();
-    const id = createId('ev');
     const now = new Date().toISOString();
-    const json = JSON.stringify(data);
-    db.prepare(`
-      INSERT INTO sync_events (id, space_id, sender_device_id, action, payload_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, spaceId, senderDeviceId, action, json, now);
-
-    // Keep table bounded to recent 1000 events per space
-    db.prepare(`
-      DELETE FROM sync_events 
-      WHERE space_id = ? AND id NOT IN (
-        SELECT id FROM sync_events WHERE space_id = ? ORDER BY created_at DESC LIMIT 1000
-      )
-    `).run(spaceId, spaceId);
-
-    return { id, spaceId, senderDeviceId, action, data, createdAt: now };
+    let seq = (db.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM sync_items').get() as any).s as number;
+    const stmt = db.prepare(`
+      INSERT INTO sync_items (space_id, collection, item_id, data_json, deleted, seq, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (space_id, collection, item_id) DO UPDATE SET
+        data_json = excluded.data_json, deleted = excluded.deleted, seq = excluded.seq, updated_at = excluded.updated_at
+    `);
+    db.exec('BEGIN');
+    try {
+      for (const it of items) {
+        if (!it || typeof it.collection !== 'string' || typeof it.id !== 'string') continue;
+        seq += 1;
+        stmt.run(spaceId, it.collection, it.id, it.deleted ? null : JSON.stringify(it.data ?? null), it.deleted ? 1 : 0, seq, now);
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return seq;
   },
 
-  listSince(spaceId: string, sinceIso?: string, limit: number = 200) {
+  since(spaceId: string, sinceSeq: number) {
     const db = getDb();
-    if (sinceIso) {
-      const rows = (db.prepare(`
-        SELECT id, space_id, sender_device_id, action, payload_json, created_at
-        FROM sync_events
-        WHERE space_id = ? AND created_at > ?
-        ORDER BY created_at ASC
-        LIMIT ?
-      `).all(spaceId, sinceIso, limit) as unknown) as StoredSyncEvent[];
-      return rows.map(r => ({
-        id: r.id,
-        spaceId: r.space_id,
-        senderDeviceId: r.sender_device_id,
-        action: r.action,
-        data: JSON.parse(r.payload_json),
-        timestamp: r.created_at
-      }));
-    } else {
-      const rows = (db.prepare(`
-        SELECT id, space_id, sender_device_id, action, payload_json, created_at
-        FROM sync_events
-        WHERE space_id = ?
-        ORDER BY created_at DESC
-        LIMIT 60
-      `).all(spaceId) as unknown) as StoredSyncEvent[];
-      return rows.reverse().map(r => ({
-        id: r.id,
-        spaceId: r.space_id,
-        senderDeviceId: r.sender_device_id,
-        action: r.action,
-        data: JSON.parse(r.payload_json),
-        timestamp: r.created_at
-      }));
-    }
+    const rows = db.prepare(`
+      SELECT collection, item_id, data_json, deleted, seq FROM sync_items
+      WHERE space_id = ? AND seq > ? ORDER BY seq ASC
+    `).all(spaceId, sinceSeq) as any[];
+    const items: SyncItem[] = rows.map(r => ({
+      collection: r.collection,
+      id: r.item_id,
+      data: r.deleted ? undefined : JSON.parse(r.data_json),
+      deleted: Boolean(r.deleted),
+      seq: r.seq
+    }));
+    const seq = rows.length ? rows[rows.length - 1].seq : sinceSeq;
+    return { items, seq };
   }
 };
 

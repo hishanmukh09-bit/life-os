@@ -72,7 +72,22 @@ import { generateId } from './utils';
 import { AIService } from './ai-service';
 import { reminderEngine } from './reminder-engine';
 import { WEBSTORAGE_KEYS, getWebStorage, setWebStorage } from './webstorage';
-import { broadcastSyncAction, initRealtimeCloudSync, SyncPayload } from './cloud-sync';
+import { hashString, pullItems, pushItems, subscribeToChanges, SyncItem } from './cloud-sync';
+
+const SYNC_STATE_KEY = 'lifeos_sync_state_v1';
+
+// Who may see an item. Private tasks and personal study/cycle data never reach the partner's devices.
+function isVisibleTo(collection: string, item: any, userId: string): boolean {
+  if (!item) return false;
+  if (collection === 'tasks' || collection === 'trashTasks') {
+    return item.visibility !== 'PRIVATE' || item.creatorId === userId || item.assignedToId === userId;
+  }
+  if (collection === 'studySubjects' || collection === 'exams' || collection === 'studySessions' || collection === 'cycleLogs') {
+    return !item.userId || item.userId === userId;
+  }
+  if (collection === 'prefs') return String(item.id).startsWith(`${userId}:`);
+  return true;
+}
 import { soundFx } from './sound-fx';
 
 export interface LightboxData {
@@ -290,47 +305,50 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     waterTargetMl: 2500
   }) : null;
 
-  // Fresh refs for CloudSync full state synchronization
-  const tasksRef = React.useRef(tasks);
-  tasksRef.current = tasks;
-  const habitsRef = React.useRef(habits);
-  habitsRef.current = habits;
-  const projectsRef = React.useRef(projects);
-  projectsRef.current = projects;
-  const goalsRef = React.useRef(goals);
-  goalsRef.current = goals;
-  const shoppingRef = React.useRef(shoppingItems);
-  shoppingRef.current = shoppingItems;
-  const lifeAdminRef = React.useRef(lifeAdminItems);
-  lifeAdminRef.current = lifeAdminItems;
-  const waterRef = React.useRef(waterIntake);
-  waterRef.current = waterIntake;
-  const sleepRef = React.useRef(sleepLogs);
-  sleepRef.current = sleepLogs;
-  const mealsRef = React.useRef(meals);
-  mealsRef.current = meals;
-  const workoutsRef = React.useRef(workouts);
-  workoutsRef.current = workouts;
-  const memoriesRef = React.useRef(memories);
-  memoriesRef.current = memories;
-  const checkinsRef = React.useRef(checkins);
-  checkinsRef.current = checkins;
-  const expensesRef = React.useRef(sharedExpenses);
-  expensesRef.current = sharedExpenses;
-  const tripsRef = React.useRef(trips);
-  tripsRef.current = trips;
-  const subjectsRef = React.useRef(studySubjects);
-  subjectsRef.current = studySubjects;
-  const examsRef = React.useRef(exams);
-  examsRef.current = exams;
-  const sessionsRef = React.useRef(studySessions);
-  sessionsRef.current = studySessions;
-  const dailyNotesRef = React.useRef(dailyPartnerNotes);
-  dailyNotesRef.current = dailyPartnerNotes;
-  const mealChecksRef = React.useRef(dailyMealChecks);
-  mealChecksRef.current = dailyMealChecks;
-  const currentUserRef = React.useRef(currentUser);
-  currentUserRef.current = currentUser;
+  // Everything listed here is stored on the server and synced live to every device.
+  // [current value, setter, localStorage key for offline cache]
+  const K = WEBSTORAGE_KEYS;
+  const synced: Record<string, [any[], (v: any) => void, string]> = {
+    tasks: [tasks, setTasks, K.TASKS],
+    trashTasks: [trashTasks, setTrashTasks, K.TRASH_TASKS],
+    habits: [habits, setHabits, K.HABITS],
+    checkins: [checkins, setCheckins, K.CHECKINS],
+    studySubjects: [studySubjects, setStudySubjects, K.STUDY_SUBJECTS],
+    exams: [exams, setExams, K.EXAMS],
+    studySessions: [studySessions, setStudySessions, K.STUDY_SESSIONS],
+    goals: [goals, setGoals, K.GOALS],
+    memories: [memories, setMemories, K.MEMORIES],
+    littleThings: [littleThings, setLittleThings, K.LITTLE_THINGS],
+    shoppingItems: [shoppingItems, setShoppingItems, K.SHOPPING],
+    lifeAdminItems: [lifeAdminItems, setLifeAdminItems, K.LIFE_ADMIN],
+    knowledgeItems: [knowledgeItems, setKnowledgeItems, K.KNOWLEDGE],
+    encouragements: [encouragements, setEncouragements, K.ENCOURAGEMENTS],
+    events: [events, setEvents, K.EVENTS],
+    achievements: [achievements, setAchievements, K.ACHIEVEMENTS],
+    projects: [projects, setProjects, K.PROJECTS],
+    classSchedule: [classSchedule, setClassSchedule, K.CLASS_SCHEDULE],
+    sharedExpenses: [sharedExpenses, setSharedExpenses, K.SHARED_EXPENSES],
+    trips: [trips, setTrips, K.TRIPS],
+    subscriptions: [subscriptions, setSubscriptions, K.SUBSCRIPTIONS],
+    documents: [documents, setDocuments, K.DOCUMENTS],
+    skills: [skills, setSkills, K.SKILLS],
+    readingBooks: [readingBooks, setReadingBooks, K.READING],
+    challenges: [challenges, setChallenges, K.CHALLENGES],
+    dailyPartnerNotes: [dailyPartnerNotes, setDailyPartnerNotes, K.DAILY_PARTNER_NOTES],
+    dailyMealChecks: [dailyMealChecks, setDailyMealChecks, K.DAILY_MEAL_CHECKS],
+    sleepLogs: [sleepLogs, setSleepLogs, K.SLEEP],
+    meals: [meals, setMeals, K.MEALS],
+    workouts: [workouts, setWorkouts, K.WORKOUTS],
+    cycleLogs: [cycleLogs, setCycleLogs, K.CYCLE],
+    // Per-person values, synced across that person's own devices
+    prefs: [[
+      { id: `${currentUser.id}:water`, value: waterIntake },
+      { id: `${currentUser.id}:topThree`, value: todaysTopThree },
+      { id: `${currentUser.id}:oneThing`, value: oneThingId }
+    ], () => {}, '']
+  };
+  const syncedRef = React.useRef(synced);
+  syncedRef.current = synced;
 
   // Sync theme & accent attribute on document
   useEffect(() => {
@@ -401,225 +419,27 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Hydrate all state from permanent browser WebStorage on mount
+  // Hydrate all state from permanent browser WebStorage on mount (offline cache)
   const [isWebStorageReady, setIsWebStorageReady] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
-    // 1. Permanent tasks (only user-created, zero auto-generated)
-    const storedTasks = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TASKS, []);
-    const fallbackTasks = storedTasks.length > 0 ? storedTasks : getWebStorage<TaskItem[]>('lifeos_tasks', []);
-    const demoTaskIds = new Set(['task_1', 'task_2', 'task_3', 'task_4', 'task_5', 'task_6']);
-    const realUserTasks = fallbackTasks.filter(t => !demoTaskIds.has(t.id));
-    if (realUserTasks.length > 0) {
-      setTasks(realUserTasks);
-      setWebStorage(WEBSTORAGE_KEYS.TASKS, realUserTasks);
-    } else {
-      setTasks([]);
-      setWebStorage(WEBSTORAGE_KEYS.TASKS, []);
+    for (const [coll, [, set, key]] of Object.entries(syncedRef.current)) {
+      if (coll === 'prefs') continue;
+      const stored = getWebStorage<any[] | null>(key, null);
+      if (Array.isArray(stored)) set(stored);
     }
-
-    const storedTrash = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TRASH_TASKS, []);
-    if (storedTrash.length > 0) setTrashTasks(storedTrash);
-
-    // 2. Habits, projects, and goals
-    const storedHabits = getWebStorage<Habit[]>(WEBSTORAGE_KEYS.HABITS, []);
-    if (storedHabits.length > 0) setHabits(storedHabits);
-
-    const storedProjects = getWebStorage<ProjectItem[]>(WEBSTORAGE_KEYS.PROJECTS, []);
-    if (storedProjects.length > 0) setProjects(storedProjects);
-
-    const storedGoals = getWebStorage<Goal[]>(WEBSTORAGE_KEYS.GOALS, []);
-    if (storedGoals.length > 0) setGoals(storedGoals);
-
-    // 3. Wellness & Daily
-    const storedWater = getWebStorage<number>(WEBSTORAGE_KEYS.WATER, 0);
-    if (storedWater > 0) setWaterIntake(storedWater);
-
-    const storedSleep = getWebStorage<SleepLog[]>(WEBSTORAGE_KEYS.SLEEP, []);
-    if (storedSleep.length > 0) setSleepLogs(storedSleep);
-
-    const storedMeals = getWebStorage<MealItem[]>(WEBSTORAGE_KEYS.MEALS, []);
-    if (storedMeals.length > 0) setMeals(storedMeals);
-
-    const storedWorkouts = getWebStorage<WorkoutLog[]>(WEBSTORAGE_KEYS.WORKOUTS, []);
-    if (storedWorkouts.length > 0) setWorkouts(storedWorkouts);
-
-    const storedCheckins = getWebStorage<DailyCheckin[]>(WEBSTORAGE_KEYS.CHECKINS, []);
-    if (storedCheckins.length > 0) setCheckins(storedCheckins);
-
-    // 4. Study & Academics (Strictly personal to current user)
-    const storedSubjects = getWebStorage<StudySubject[]>(WEBSTORAGE_KEYS.STUDY_SUBJECTS, []);
-    const demoSubjIds = new Set(['subj_robotics', 'subj_vision']);
-    const userSubjects = storedSubjects.filter(s => !demoSubjIds.has(s.id) && s.userId === currentUser.id);
-    setStudySubjects(userSubjects);
-
-    const storedExams = getWebStorage<Exam[]>(WEBSTORAGE_KEYS.EXAMS, []);
-    const demoExamIds = new Set(['exam_robotics_midterm', 'exam_vision_quiz']);
-    const userExams = storedExams.filter(e => !demoExamIds.has(e.id) && e.userId === currentUser.id);
-    setExams(userExams);
-
-    const storedSessions = getWebStorage<StudySession[]>(WEBSTORAGE_KEYS.STUDY_SESSIONS, []);
-    const userSessions = storedSessions.filter(s => s.userId === currentUser.id);
-    setStudySessions(userSessions);
-
-    const storedClasses = getWebStorage<ClassScheduleItem[]>(WEBSTORAGE_KEYS.CLASS_SCHEDULE, []);
-    if (storedClasses.length > 0) setClassSchedule(storedClasses);
-
-    // 5. Admin & Lists
-    const storedShopping = getWebStorage<ShoppingItem[]>(WEBSTORAGE_KEYS.SHOPPING, []);
-    if (storedShopping.length > 0) setShoppingItems(storedShopping);
-
-    const storedLifeAdmin = getWebStorage<LifeAdminItem[]>(WEBSTORAGE_KEYS.LIFE_ADMIN, []);
-    if (storedLifeAdmin.length > 0) setLifeAdminItems(storedLifeAdmin);
-
-    const storedMemories = getWebStorage<MemoryItem[]>(WEBSTORAGE_KEYS.MEMORIES, []);
-    if (storedMemories.length > 0) setMemories(storedMemories);
-
-    const storedExpenses = getWebStorage<SharedExpense[]>(WEBSTORAGE_KEYS.SHARED_EXPENSES, []);
-    if (storedExpenses.length > 0) setSharedExpenses(storedExpenses);
-
-    const storedTrips = getWebStorage<TripItem[]>(WEBSTORAGE_KEYS.TRIPS, []);
-    if (storedTrips.length > 0) setTrips(storedTrips);
-
-    const storedTopThree = getWebStorage<string[]>(WEBSTORAGE_KEYS.TOP_THREE, []);
-    if (storedTopThree.length > 0) setTodaysTopThree(storedTopThree);
-
-    const storedOneThing = getWebStorage<string | null>(WEBSTORAGE_KEYS.ONE_THING, null);
-    if (storedOneThing) setOneThingId(storedOneThing);
+    setWaterIntake(getWebStorage<number>(WEBSTORAGE_KEYS.WATER, 0));
+    setTodaysTopThree(getWebStorage<string[]>(WEBSTORAGE_KEYS.TOP_THREE, []));
+    setOneThingId(getWebStorage<string | null>(WEBSTORAGE_KEYS.ONE_THING, null));
 
     const storedUser = getWebStorage<UserProfile | null>(WEBSTORAGE_KEYS.CURRENT_USER, null);
     if (storedUser) setCurrentUser(storedUser);
-
     const storedSpace = getWebStorage<Space | null>(WEBSTORAGE_KEYS.CURRENT_SPACE, null);
     if (storedSpace) setCurrentSpace(storedSpace);
 
-    const storedDailyNotes = getWebStorage<DailyPartnerNote[]>(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, []);
-    if (storedDailyNotes.length > 0) setDailyPartnerNotes(storedDailyNotes);
-
-    const storedMealChecks = getWebStorage<DailyMealCheck[]>(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, []);
-    if (storedMealChecks.length > 0) setDailyMealChecks(storedMealChecks);
-
     setIsWebStorageReady(true);
   }, []);
-
-  // Multi-tab synchronization through WebStorage
-  useEffect(() => {
-    const handleStorageEvent = (e: StorageEvent) => {
-      if (e.key === WEBSTORAGE_KEYS.TASKS && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) setTasks(parsed);
-        } catch {}
-      }
-      if (e.key === WEBSTORAGE_KEYS.TRASH_TASKS && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) setTrashTasks(parsed);
-        } catch {}
-      }
-      if (e.key === WEBSTORAGE_KEYS.HABITS && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) setHabits(parsed);
-        } catch {}
-      }
-    };
-    window.addEventListener('storage', handleStorageEvent);
-    return () => window.removeEventListener('storage', handleStorageEvent);
-  }, []);
-
-  // Reactive background persistence to WebStorage
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.TASKS, tasks);
-  }, [tasks, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, trashTasks);
-  }, [trashTasks, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.HABITS, habits);
-  }, [habits, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.PROJECTS, projects);
-  }, [projects, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.GOALS, goals);
-  }, [goals, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.SHOPPING, shoppingItems);
-  }, [shoppingItems, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, lifeAdminItems);
-  }, [lifeAdminItems, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, studySubjects);
-  }, [studySubjects, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.EXAMS, exams);
-  }, [exams, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.WATER, waterIntake);
-  }, [waterIntake, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.SLEEP, sleepLogs);
-  }, [sleepLogs, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.MEALS, meals);
-  }, [meals, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.WORKOUTS, workouts);
-  }, [workouts, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.MEMORIES, memories);
-  }, [memories, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, sharedExpenses);
-  }, [sharedExpenses, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.TRIPS, trips);
-  }, [trips, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, studySessions);
-  }, [studySessions, isWebStorageReady]);
-
-  useEffect(() => {
-    if (!isWebStorageReady) return;
-    setWebStorage(WEBSTORAGE_KEYS.CLASS_SCHEDULE, classSchedule);
-  }, [classSchedule, isWebStorageReady]);
 
   useEffect(() => {
     if (!isWebStorageReady) return;
@@ -631,817 +451,188 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     setWebStorage(WEBSTORAGE_KEYS.CURRENT_SPACE, currentSpace);
   }, [currentSpace, isWebStorageReady]);
 
-  // Sync with persistent SQLite database on mount or user/space change without losing WebStorage tasks
+  // ---------------- Multi-device sync engine ----------------
+  // Server = source of truth. `snap` holds a hash of every item as last confirmed by
+  // the server; anything that differs locally is an unsent change and gets pushed.
+  const flushRef = React.useRef<() => void>(() => {});
+  const resyncRef = React.useRef<() => void>(() => {});
+
   useEffect(() => {
-    let isMounted = true;
-    async function loadDbTasks() {
-      try {
-        const res = await fetch(`/api/tasks?spaceId=${currentSpace.id}&userId=${currentUser.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.tasks) && isMounted) {
-            setTasks(prevTasks => {
-              const taskMap = new Map<string, TaskItem>();
-              const localTasks = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TASKS, prevTasks);
-              
-              // 1. Add server tasks
-              data.tasks.forEach((t: TaskItem) => taskMap.set(t.id, t));
-              
-              // 2. Merge local tasks without reverting completed tasks or losing local additions
-              localTasks.forEach((t: TaskItem) => {
-                const serverTask = taskMap.get(t.id);
-                if (!serverTask) {
-                  taskMap.set(t.id, t);
-                } else {
-                  const isCompleted = serverTask.status === 'COMPLETED' || t.status === 'COMPLETED';
-                  const bestProof = t.proof || serverTask.proof;
-                  const serverTime = new Date(serverTask.updatedAt || serverTask.createdAt || 0).getTime();
-                  const localTime = new Date(t.updatedAt || t.createdAt || 0).getTime();
-                  const newerTask = serverTime > localTime ? serverTask : t;
+    if (!isWebStorageReady) return;
+    const spaceId = currentSpace.id;
+    const me = currentUser.id;
+    const saved = getWebStorage<any>(SYNC_STATE_KEY, null);
+    const fresh = !(saved && saved.spaceId === spaceId && saved.userId === me && saved.snap);
+    const st = {
+      seq: fresh ? 0 : Number(saved.seq) || 0,
+      snap: (fresh ? {} : saved.snap) as Record<string, Record<string, string>>,
+      ready: false,
+      firstRun: fresh // first sync on this device/profile: server copy wins, local-only items are uploaded
+    };
+    let closed = false, flushing = false, flushAgain = false, pulling = false, pullAgain = false;
 
-                  taskMap.set(t.id, {
-                    ...newerTask,
-                    status: isCompleted ? 'COMPLETED' : newerTask.status,
-                    proof: bestProof,
-                    completedAt: isCompleted ? (newerTask.completedAt || t.completedAt || new Date().toISOString()) : undefined
-                  });
-                }
-              });
-
-              // Filter out any tasks that are in trash
-              const trash = getWebStorage<TaskItem[]>(WEBSTORAGE_KEYS.TRASH_TASKS, []);
-              const trashIds = new Set(trash.map(tr => tr.id));
-              const merged = Array.from(taskMap.values()).filter(t => !trashIds.has(t.id));
-
-              setWebStorage(WEBSTORAGE_KEYS.TASKS, merged);
-              return merged;
-            });
-          }
-        }
-      } catch (e) {
-        // Fallback to permanent WebStorage - zero data loss
+    // Switching profile: drop anything this person must not see
+    if (fresh) {
+      for (const [coll, [, set]] of Object.entries(syncedRef.current)) {
+        if (coll !== 'prefs') set((prev: any[]) => prev.filter(it => !it || isVisibleTo(coll, it, me)));
       }
     }
-    loadDbTasks();
-    const interval = setInterval(loadDbTasks, 4000);
-    const onFocus = () => loadDbTasks();
-    window.addEventListener('focus', onFocus);
-    return () => { 
-      isMounted = false;
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
+
+    const save = () => setWebStorage(SYNC_STATE_KEY, { spaceId, userId: me, seq: st.seq, snap: st.snap });
+    const itemHash = (it: any) => hashString(JSON.stringify(it));
+    const visibleMap = (coll: string, list: any[]) => {
+      const m = new Map<string, any>();
+      for (const it of list) if (it && it.id != null && isVisibleTo(coll, it, me)) m.set(String(it.id), it);
+      return m;
     };
-  }, [currentSpace.id, currentUser.id]);
 
-  // Real-Time Multi-Device Cloud Sync Listener (Instant phone <-> laptop sync)
+    const flush = async () => {
+      if (closed || !st.ready) return;
+      if (flushing) { flushAgain = true; return; }
+      const items: SyncItem[] = [];
+      const confirm: [string, string, string | null][] = [];
+      for (const [coll, [list]] of Object.entries(syncedRef.current)) {
+        const snap = (st.snap[coll] ||= {});
+        const local = visibleMap(coll, list);
+        local.forEach((it, id) => {
+          const h = itemHash(it);
+          if (snap[id] !== h) { items.push({ collection: coll, id, data: it }); confirm.push([coll, id, h]); }
+        });
+        for (const id of Object.keys(snap)) {
+          if (!local.has(id)) { items.push({ collection: coll, id, deleted: true }); confirm.push([coll, id, null]); }
+        }
+      }
+      if (items.length === 0) return;
+      flushing = true;
+      const ok = await pushItems(spaceId, items);
+      flushing = false;
+      if (closed) return;
+      if (ok) {
+        for (const [coll, id, h] of confirm) {
+          if (h === null) delete st.snap[coll][id];
+          else st.snap[coll][id] = h;
+        }
+        save();
+      }
+      // failed pushes stay "unsent" and retry on the next pull (every <=15s, on reconnect/wake)
+      if (flushAgain) { flushAgain = false; flush(); }
+    };
+
+    const apply = (rows: SyncItem[]) => {
+      const ops: Record<string, Map<string, any>> = {};
+      const localCache: Record<string, Map<string, any>> = {};
+      for (const row of rows) {
+        const coll = row.collection;
+        const entry = syncedRef.current[coll];
+        if (!entry) continue;
+        const id = String(row.id);
+        const snap = (st.snap[coll] ||= {});
+        const op = (ops[coll] ||= new Map());
+        if (!row.deleted && !isVisibleTo(coll, row.data, me)) {
+          // e.g. partner made a task private: drop our copy without pushing a delete
+          if (snap[id] !== undefined) { delete snap[id]; op.set(id, null); }
+          continue;
+        }
+        const local = (localCache[coll] ||= visibleMap(coll, entry[0])).get(id);
+        const localHash = local ? itemHash(local) : undefined;
+        const rowHash = row.deleted ? undefined : itemHash(row.data);
+        const unsent = !st.firstRun && localHash !== snap[id];
+        if (unsent && localHash !== rowHash) continue; // our newer local edit wins; flush sends it
+        if (row.deleted) {
+          delete snap[id];
+          if (local) op.set(id, null);
+        } else {
+          snap[id] = rowHash!;
+          if (localHash !== rowHash) op.set(id, row.data);
+        }
+      }
+
+      for (const [coll, op] of Object.entries(ops)) {
+        if (op.size === 0) continue;
+        if (coll === 'prefs') {
+          const prefs = syncedRef.current.prefs[0];
+          op.forEach((v, id) => {
+            if (!v) return;
+            const i = prefs.findIndex(p => p.id === id);
+            if (i >= 0) prefs[i] = v;
+            const key = id.slice(me.length + 1);
+            if (key === 'water') setWaterIntake(Number(v.value) || 0);
+            else if (key === 'topThree') setTodaysTopThree(Array.isArray(v.value) ? v.value : []);
+            else if (key === 'oneThing') setOneThingId(v.value ?? null);
+          });
+          continue;
+        }
+        const merge = (prev: any[]) => {
+          const left = new Map(op);
+          const out: any[] = [];
+          for (const it of prev) {
+            const key = String(it?.id);
+            if (left.has(key)) {
+              const v = left.get(key);
+              left.delete(key);
+              if (v) out.push(v);
+            } else out.push(it);
+          }
+          const added = Array.from(left.values()).filter(Boolean).reverse();
+          return [...added, ...out];
+        };
+        // Update the ref now too, so a flush before React re-renders doesn't push stale data back
+        syncedRef.current[coll][0] = merge(syncedRef.current[coll][0]);
+        syncedRef.current[coll][1](merge);
+
+        // Partner activity chimes
+        if (st.firstRun) continue;
+        op.forEach((v) => {
+          if (!v) return;
+          if (coll === 'tasks' && v.status === 'COMPLETED' && v.creatorId !== me) soundFx.playTaskCompleteChime();
+          if (coll === 'dailyPartnerNotes' && v.fromUserId !== me) soundFx.playPartnerNoteChime();
+          if (coll === 'encouragements' && v.fromUserId !== me) soundFx.playEncouragementChime();
+        });
+      }
+    };
+
+    const pull = async () => {
+      if (closed) return;
+      if (pulling) { pullAgain = true; return; }
+      pulling = true;
+      const res = await pullItems(spaceId, st.seq);
+      pulling = false;
+      if (closed) return;
+      if (res) {
+        apply(res.items);
+        st.seq = res.seq;
+        st.ready = true;
+        st.firstRun = false;
+        save();
+        flush();
+      }
+      if (pullAgain) { pullAgain = false; pull(); }
+    };
+
+    flushRef.current = flush;
+    resyncRef.current = () => { st.seq = 0; pull(); };
+    const unsub = subscribeToChanges(spaceId, pull, setCloudSyncStatus);
+    return () => {
+      closed = true;
+      unsub();
+      flushRef.current = () => {};
+      resyncRef.current = () => {};
+    };
+  }, [currentSpace.id, currentUser.id, isWebStorageReady]);
+
+  // Any local change: cache it offline and push it to the server (debounced)
+  const syncedValues = Object.values(synced).map(([v]) => v);
   useEffect(() => {
-    const unsub = initRealtimeCloudSync(
-      currentSpace.id,
-      (payload: SyncPayload) => {
-        const { action, data } = payload;
-        if (!action || !data) return;
-
-        if (action === 'SYNC_REQUEST') {
-          broadcastSyncAction(currentSpace.id, 'FULL_SYNC', {
-            tasks: tasksRef.current,
-            habits: habitsRef.current,
-            projects: projectsRef.current,
-            goals: goalsRef.current,
-            shoppingItems: shoppingRef.current,
-            lifeAdminItems: lifeAdminRef.current,
-            waterIntake: waterRef.current,
-            sleepLogs: sleepRef.current,
-            meals: mealsRef.current,
-            workouts: workoutsRef.current,
-            memories: memoriesRef.current,
-            checkins: checkinsRef.current,
-            sharedExpenses: expensesRef.current,
-            trips: tripsRef.current,
-            studySubjects: subjectsRef.current,
-            exams: examsRef.current,
-            studySessions: sessionsRef.current,
-            dailyPartnerNotes: dailyNotesRef.current,
-            dailyMealChecks: mealChecksRef.current
-          });
-          return;
-        }
-
-        if (action === 'FULL_SYNC') {
-          // 1. Merge Tasks with strict privacy: never accept partner's private tasks
-          if (Array.isArray(data.tasks) && data.tasks.length > 0) {
-            setTasks(prev => {
-              const taskMap = new Map<string, TaskItem>();
-              prev.forEach(t => taskMap.set(t.id, t));
-              data.tasks.forEach((rt: TaskItem) => {
-                // Strict zero-leak privacy: Never accept partner's private tasks!
-                if (rt.visibility === 'PRIVATE' && rt.creatorId !== currentUserRef.current.id) {
-                  return;
-                }
-                const existing = taskMap.get(rt.id);
-                if (!existing) {
-                  taskMap.set(rt.id, rt);
-                } else {
-                  const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-                  const remoteTime = new Date(rt.updatedAt || rt.createdAt || 0).getTime();
-                  if (rt.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
-                    taskMap.set(rt.id, rt);
-                  } else if (remoteTime > localTime) {
-                    taskMap.set(rt.id, rt);
-                  }
-                  if (rt.proof && !taskMap.get(rt.id)?.proof) {
-                    const cur = taskMap.get(rt.id) || existing;
-                    taskMap.set(rt.id, { ...cur, proof: rt.proof });
-                  }
-                }
-              });
-              const merged = Array.from(taskMap.values());
-              setWebStorage(WEBSTORAGE_KEYS.TASKS, merged);
-              return merged;
-            });
-          }
-
-          // 2. Merge Habits
-          if (Array.isArray(data.habits) && data.habits.length > 0) {
-            setHabits(prev => {
-              const map = new Map<string, Habit>();
-              prev.forEach(h => map.set(h.id, h));
-              data.habits.forEach((rh: Habit) => {
-                const existing = map.get(rh.id);
-                if (!existing || rh.logs.length >= existing.logs.length) {
-                  map.set(rh.id, rh);
-                }
-              });
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.HABITS, merged);
-              return merged;
-            });
-          }
-
-          // 3. Merge Shopping
-          if (Array.isArray(data.shoppingItems) && data.shoppingItems.length > 0) {
-            setShoppingItems(prev => {
-              const map = new Map<string, ShoppingItem>();
-              prev.forEach(s => map.set(s.id, s));
-              data.shoppingItems.forEach((rs: ShoppingItem) => map.set(rs.id, rs));
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.SHOPPING, merged);
-              return merged;
-            });
-          }
-
-          // 4. Merge Projects
-          if (Array.isArray(data.projects) && data.projects.length > 0) {
-            setProjects(prev => {
-              const map = new Map<string, ProjectItem>();
-              prev.forEach(p => map.set(p.id, p));
-              data.projects.forEach((rp: ProjectItem) => map.set(rp.id, rp));
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.PROJECTS, merged);
-              return merged;
-            });
-          }
-
-          // 5. Merge Goals
-          if (Array.isArray(data.goals) && data.goals.length > 0) {
-            setGoals(prev => {
-              const map = new Map<string, Goal>();
-              prev.forEach(g => map.set(g.id, g));
-              data.goals.forEach((rg: Goal) => map.set(rg.id, rg));
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.GOALS, merged);
-              return merged;
-            });
-          }
-
-          // 6. Merge Wellness & Logs
-          if (typeof data.waterIntake === 'number' && data.waterIntake > 0) {
-            setWaterIntake(w => Math.max(w, data.waterIntake));
-          }
-          if (Array.isArray(data.sleepLogs) && data.sleepLogs.length > 0) {
-            setSleepLogs(prev => {
-              const map = new Map<string, SleepLog>();
-              prev.forEach(s => map.set(s.id, s));
-              data.sleepLogs.forEach((rs: SleepLog) => map.set(rs.id, rs));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.meals) && data.meals.length > 0) {
-            setMeals(prev => {
-              const map = new Map<string, MealItem>();
-              prev.forEach(m => map.set(m.id, m));
-              data.meals.forEach((rm: MealItem) => map.set(rm.id, rm));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.workouts) && data.workouts.length > 0) {
-            setWorkouts(prev => {
-              const map = new Map<string, WorkoutLog>();
-              prev.forEach(w => map.set(w.id, w));
-              data.workouts.forEach((rw: WorkoutLog) => map.set(rw.id, rw));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.checkins) && data.checkins.length > 0) {
-            setCheckins(prev => {
-              const map = new Map<string, DailyCheckin>();
-              prev.forEach(c => map.set(`${c.userId}_${c.date}`, c));
-              data.checkins.forEach((rc: DailyCheckin) => map.set(`${rc.userId}_${rc.date}`, rc));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.sharedExpenses) && data.sharedExpenses.length > 0) {
-            setSharedExpenses(prev => {
-              const map = new Map<string, SharedExpense>();
-              prev.forEach(e => map.set(e.id, e));
-              data.sharedExpenses.forEach((re: SharedExpense) => map.set(re.id, re));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.memories) && data.memories.length > 0) {
-            setMemories(prev => {
-              const map = new Map<string, MemoryItem>();
-              prev.forEach(m => map.set(m.id, m));
-              data.memories.forEach((rm: MemoryItem) => map.set(rm.id, rm));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.lifeAdminItems) && data.lifeAdminItems.length > 0) {
-            setLifeAdminItems(prev => {
-              const map = new Map<string, LifeAdminItem>();
-              prev.forEach(a => map.set(a.id, a));
-              data.lifeAdminItems.forEach((ra: LifeAdminItem) => map.set(ra.id, ra));
-              return Array.from(map.values());
-            });
-          }
-          if (Array.isArray(data.trips) && data.trips.length > 0) {
-            setTrips(prev => {
-              const map = new Map<string, TripItem>();
-              prev.forEach(t => map.set(t.id, t));
-              data.trips.forEach((rt: TripItem) => map.set(rt.id, rt));
-              return Array.from(map.values());
-            });
-          }
-
-          // Merge Exams strictly for current user
-          if (Array.isArray(data.exams) && data.exams.length > 0) {
-            setExams(prev => {
-              const map = new Map<string, Exam>();
-              prev.forEach(e => map.set(e.id, e));
-              data.exams.forEach((re: Exam) => {
-                if (re.userId === currentUserRef.current.id) {
-                  map.set(re.id, re);
-                }
-              });
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.EXAMS, merged);
-              return merged;
-            });
-          }
-
-          // Merge Study Subjects strictly for current user
-          if (Array.isArray(data.studySubjects) && data.studySubjects.length > 0) {
-            setStudySubjects(prev => {
-              const map = new Map<string, StudySubject>();
-              prev.forEach(s => map.set(s.id, s));
-              data.studySubjects.forEach((rs: StudySubject) => {
-                if (rs.userId === currentUserRef.current.id) {
-                  map.set(rs.id, rs);
-                }
-              });
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, merged);
-              return merged;
-            });
-          }
-
-          // Merge Study Sessions strictly for current user
-          if (Array.isArray(data.studySessions) && data.studySessions.length > 0) {
-            setStudySessions(prev => {
-              const map = new Map<string, StudySession>();
-              prev.forEach(s => map.set(s.id, s));
-              data.studySessions.forEach((rs: StudySession) => {
-                if (rs.userId === currentUserRef.current.id) {
-                  map.set(rs.id, rs);
-                }
-              });
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, merged);
-              return merged;
-            });
-          }
-          // Merge Daily Meal Checks
-          if (Array.isArray(data.dailyMealChecks) && data.dailyMealChecks.length > 0) {
-            setDailyMealChecks(prev => {
-              const map = new Map<string, DailyMealCheck>();
-              prev.forEach(c => map.set(`${c.userId}_${c.date}_${c.slot}`, c));
-              data.dailyMealChecks.forEach((rc: DailyMealCheck) => {
-                map.set(`${rc.userId}_${rc.date}_${rc.slot}`, rc);
-              });
-              const merged = Array.from(map.values());
-              setWebStorage(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, merged);
-              return merged;
-            });
-          }
-          return;
-        }
-
-        if (action === 'MEAL_CHECK_TOGGLE') {
-          const check = data as DailyMealCheck;
-          if (check?.id) {
-            if (check.userId !== currentUserRef.current.id && check.had) {
-              soundFx.playTaskCompleteChime();
-            }
-            setDailyMealChecks(prev => {
-              const filtered = prev.filter(c => !(c.userId === check.userId && c.date === check.date && c.slot === check.slot));
-              const updated = [check, ...filtered];
-              setWebStorage(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'DAILY_NOTE_SAVE') {
-          const savedNote = data as DailyPartnerNote;
-          if (savedNote?.id) {
-            if (savedNote.fromUserId !== currentUserRef.current.id) {
-              soundFx.playPartnerNoteChime();
-            }
-            setDailyPartnerNotes(prev => {
-              const filtered = prev.filter(n => !(n.fromUserId === savedNote.fromUserId && n.date === savedNote.date));
-              const updated = [savedNote, ...filtered];
-              setWebStorage(WEBSTORAGE_KEYS.DAILY_PARTNER_NOTES, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'EXAM_ADD') {
-          const newExam = data as Exam;
-          if (!newExam?.id) return;
-          // STRICT PERSONAL PRIVACY: If another user added an exam, do not store or show it!
-          if (newExam.userId !== currentUserRef.current.id) return;
-          setExams(prev => {
-            if (prev.some(e => e.id === newExam.id)) return prev;
-            const updated = [...prev, newExam];
-            setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'EXAM_DELETE') {
-          const { id } = data;
-          setExams(prev => {
-            const updated = prev.filter(e => e.id !== id);
-            setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TASK_CREATE') {
-          const newTask = data as TaskItem;
-          if (!newTask?.id) return;
-          // STRICT PRIVACY: If another user created a PRIVATE task, do not store or show it!
-          if (newTask.visibility === 'PRIVATE' && newTask.creatorId !== currentUserRef.current.id) {
-            return;
-          }
-          setTasks(prev => {
-            if (prev.some(t => t.id === newTask.id)) return prev;
-            const updated = [newTask, ...prev];
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TASK_TOGGLE') {
-          const { taskId, status, completedAt, updatedAt, proof, userId, task: incomingTask } = data;
-          if (status === 'COMPLETED' && userId && userId !== currentUserRef.current.id) {
-            soundFx.playTaskCompleteChime();
-          }
-          setTasks(prev => {
-            let found = false;
-            const updated = prev.map(t => {
-              if (t.id === taskId) {
-                found = true;
-                return {
-                  ...t,
-                  status: status || (t.status === 'COMPLETED' ? 'TODO' : 'COMPLETED'),
-                  completedAt: completedAt || (status === 'COMPLETED' ? new Date().toISOString() : undefined),
-                  updatedAt: updatedAt || new Date().toISOString(),
-                  proof: proof !== undefined ? proof : t.proof
-                };
-              }
-              return t;
-            });
-            const finalTasks = (found || !incomingTask) ? updated : [incomingTask, ...updated];
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, finalTasks);
-            return finalTasks;
-          });
-          return;
-        }
-
-        if (action === 'TASK_DELETE') {
-          const { taskId, deletedAt } = data;
-          setTasks(prev => {
-            const target = prev.find(t => t.id === taskId);
-            if (target) {
-              const deletedItem = { ...target, deletedAt: deletedAt || new Date().toISOString() };
-              setTrashTasks(tr => {
-                if (tr.some(t => t.id === taskId)) return tr;
-                const updatedTrash = [deletedItem, ...tr];
-                setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
-                return updatedTrash;
-              });
-            }
-            const updated = prev.filter(t => t.id !== taskId);
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TASK_RESTORE') {
-          const { taskId, updatedAt } = data;
-          setTrashTasks(prevTrash => {
-            const target = prevTrash.find(t => t.id === taskId);
-            if (target) {
-              const restored = { ...target, deletedAt: undefined, updatedAt: updatedAt || new Date().toISOString() };
-              setTasks(prevTasks => {
-                if (prevTasks.some(t => t.id === taskId)) return prevTasks;
-                const updated = [restored, ...prevTasks];
-                setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-                return updated;
-              });
-            }
-            const updatedTrash = prevTrash.filter(t => t.id !== taskId);
-            setWebStorage(WEBSTORAGE_KEYS.TRASH_TASKS, updatedTrash);
-            return updatedTrash;
-          });
-          return;
-        }
-
-        if (action === 'TASK_SNOOZE' || action === 'TASK_RESCHEDULE') {
-          const { taskId, dueDate, dueTime, updatedAt } = data;
-          setTasks(prev => {
-            const updated = prev.map(t => {
-              if (t.id === taskId) {
-                return {
-                  ...t,
-                  dueDate: dueDate !== undefined ? dueDate : t.dueDate,
-                  dueTime: dueTime !== undefined ? dueTime : t.dueTime,
-                  updatedAt: updatedAt || new Date().toISOString()
-                };
-              }
-              return t;
-            });
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TASK_PROOF_REPLACE') {
-          const { taskId, proof, updatedAt } = data;
-          setTasks(prev => {
-            const updated = prev.map(t => t.id === taskId ? { ...t, proof, updatedAt } : t);
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TASK_PROOF_DELETE') {
-          const { taskId, updatedAt } = data;
-          setTasks(prev => {
-            const updated = prev.map(t => t.id === taskId ? { ...t, proof: undefined, updatedAt } : t);
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TASK_SUBTASK_TOGGLE') {
-          const { taskId, subtaskId, completed, updatedAt } = data;
-          setTasks(prev => {
-            const updated = prev.map(t => {
-              if (t.id === taskId && t.subtasks) {
-                return {
-                  ...t,
-                  updatedAt: updatedAt || new Date().toISOString(),
-                  subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, completed } : s)
-                };
-              }
-              return t;
-            });
-            setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        // Habit Real-Time Sync
-        if (action === 'HABIT_ADD') {
-          const newHabit = data as Habit;
-          if (newHabit?.id) {
-            setHabits(prev => {
-              if (prev.some(h => h.id === newHabit.id)) return prev;
-              const updated = [newHabit, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'HABIT_TOGGLE') {
-          const { habitId, currentStreak, bestStreak, logs } = data;
-          setHabits(prev => {
-            const updated = prev.map(h => h.id === habitId ? { ...h, currentStreak, bestStreak, logs } : h);
-            setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        // Wellness Real-Time Sync
-        if (action === 'WELLNESS_WATER') {
-          if (typeof data.total === 'number') {
-            setWaterIntake(data.total);
-            setWebStorage(WEBSTORAGE_KEYS.WATER, data.total);
-          }
-          return;
-        }
-
-        if (action === 'WELLNESS_SLEEP') {
-          const newLog = data as SleepLog;
-          if (newLog?.id) {
-            setSleepLogs(prev => {
-              if (prev.some(s => s.id === newLog.id)) return prev;
-              const updated = [newLog, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.SLEEP, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'WELLNESS_MEAL') {
-          const newMeal = data as MealItem;
-          if (newMeal?.id) {
-            setMeals(prev => {
-              if (prev.some(m => m.id === newMeal.id)) return prev;
-              const updated = [newMeal, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.MEALS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'WELLNESS_WORKOUT') {
-          const newWorkout = data as WorkoutLog;
-          if (newWorkout?.id) {
-            setWorkouts(prev => {
-              if (prev.some(w => w.id === newWorkout.id)) return prev;
-              const updated = [newWorkout, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.WORKOUTS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'WELLNESS_CHECKIN') {
-          const newCheckin = data as DailyCheckin;
-          if (newCheckin?.id) {
-            setCheckins(prev => {
-              const updated = [newCheckin, ...prev.filter(c => !(c.userId === newCheckin.userId && c.date === newCheckin.date))];
-              setWebStorage(WEBSTORAGE_KEYS.CHECKINS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        // Shopping & Admin Real-Time Sync
-        if (action === 'SHOPPING_ADD') {
-          const newItem = data as ShoppingItem;
-          if (newItem?.id) {
-            setShoppingItems(prev => {
-              if (prev.some(s => s.id === newItem.id)) return prev;
-              const updated = [newItem, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'SHOPPING_TOGGLE') {
-          setShoppingItems(prev => {
-            const updated = prev.map(s => s.id === data.id ? { ...s, completed: !s.completed } : s);
-            setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'ADMIN_ADD') {
-          const newAdmin = data as LifeAdminItem;
-          if (newAdmin?.id) {
-            setLifeAdminItems(prev => {
-              if (prev.some(a => a.id === newAdmin.id)) return prev;
-              const updated = [newAdmin, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'ADMIN_TOGGLE') {
-          setLifeAdminItems(prev => {
-            const updated = prev.map(a => a.id === data.id ? { ...a, status: (a.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED') as LifeAdminItem['status'] } : a);
-            setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
-            return updated;
-          });
-          return;
-        }
-
-        // Projects & Goals Real-Time Sync
-        if (action === 'PROJECT_ADD') {
-          const newProj = data as ProjectItem;
-          if (newProj?.id) {
-            setProjects(prev => {
-              if (prev.some(p => p.id === newProj.id)) return prev;
-              const updated = [...prev, newProj];
-              setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'PROJECT_MILESTONE_TOGGLE') {
-          setProjects(prev => {
-            const updated = prev.map(p => p.id === data.projectId ? {
-              ...p,
-              milestones: p.milestones.map(m => m.id === data.milestoneId ? { ...m, completed: !m.completed } : m)
-            } : p);
-            setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'GOAL_ADD') {
-          const newGoal = data as Goal;
-          if (newGoal?.id) {
-            setGoals(prev => {
-              if (prev.some(g => g.id === newGoal.id)) return prev;
-              const updated = [...prev, newGoal];
-              setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'GOAL_MILESTONE_TOGGLE') {
-          setGoals(prev => {
-            const updated = prev.map(g => g.id === data.goalId ? {
-              ...g,
-              milestones: g.milestones.map(m => m.id === data.milestoneId ? { ...m, completed: !m.completed } : m)
-            } : g);
-            setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        // Shared Expenses & Trips Real-Time Sync
-        if (action === 'EXPENSE_ADD') {
-          const newExp = data as SharedExpense;
-          if (newExp?.id) {
-            setSharedExpenses(prev => {
-              if (prev.some(e => e.id === newExp.id)) return prev;
-              const updated = [newExp, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'EXPENSE_SETTLE') {
-          setSharedExpenses(prev => {
-            const updated = prev.map(e => e.id === data.id ? { ...e, isSettled: !e.isSettled } : e);
-            setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
-            return updated;
-          });
-          return;
-        }
-
-        if (action === 'TRIP_ADD') {
-          const newTrip = data as TripItem;
-          if (newTrip?.id) {
-            setTrips(prev => {
-              if (prev.some(t => t.id === newTrip.id)) return prev;
-              const updated = [...prev, newTrip];
-              setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'TRIP_PACKING') {
-          setTrips(prev => {
-            const updated = prev.map(t => t.id === data.tripId ? {
-              ...t,
-              packingList: t.packingList.map(p => p.id === data.itemId ? { ...p, packed: !p.packed } : p)
-            } : t);
-            setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
-            return updated;
-          });
-          return;
-        }
-
-        // Memories & Connection Real-Time Sync
-        if (action === 'MEMORY_ADD') {
-          const newMem = data as MemoryItem;
-          if (newMem?.id) {
-            setMemories(prev => {
-              if (prev.some(m => m.id === newMem.id)) return prev;
-              const updated = [newMem, ...prev];
-              setWebStorage(WEBSTORAGE_KEYS.MEMORIES, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'ENCOURAGEMENT_SEND') {
-          const newEnc = data as Encouragement;
-          if (newEnc?.id) {
-            if (newEnc.fromUserId !== currentUserRef.current.id) {
-              soundFx.playEncouragementChime();
-            }
-            setEncouragements(prev => {
-              if (prev.some(e => e.id === newEnc.id)) return prev;
-              return [newEnc, ...prev];
-            });
-          }
-          return;
-        }
-
-        // Academics Real-Time Sync
-        if (action === 'STUDY_SUBJECT_ADD') {
-          const newSubj = data as StudySubject;
-          if (newSubj?.id) {
-            setStudySubjects(prev => {
-              if (prev.some(s => s.id === newSubj.id)) return prev;
-              const updated = [...prev, newSubj];
-              setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-
-        if (action === 'STUDY_SESSION_ADD') {
-          const newSess = data as StudySession;
-          if (newSess?.id) {
-            setStudySessions(prev => [newSess, ...prev]);
-          }
-          return;
-        }
-
-        if (action === 'EXAM_ADD') {
-          const newExam = data as Exam;
-          if (newExam?.id) {
-            setExams(prev => {
-              if (prev.some(e => e.id === newExam.id)) return prev;
-              const updated = [...prev, newExam];
-              setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
-              return updated;
-            });
-          }
-          return;
-        }
-      },
-      (status) => setCloudSyncStatus(status)
-    );
-
-    // Initial broadcast to announce presence and request peer state
-    broadcastSyncAction(currentSpace.id, 'SYNC_REQUEST', {});
-
-    return () => unsub();
-  }, [currentSpace.id]);
+    if (!isWebStorageReady) return;
+    for (const [coll, [list, , key]] of Object.entries(syncedRef.current)) {
+      if (coll !== 'prefs') setWebStorage(key, list);
+    }
+    setWebStorage(WEBSTORAGE_KEYS.WATER, waterIntake);
+    setWebStorage(WEBSTORAGE_KEYS.TOP_THREE, todaysTopThree);
+    setWebStorage(WEBSTORAGE_KEYS.ONE_THING, oneThingId);
+    const t = setTimeout(() => flushRef.current(), 200);
+    return () => clearTimeout(t);
+  }, [...syncedValues.slice(0, -1), waterIntake, todaysTopThree, oneThingId, isWebStorageReady]);
 
   // Real Persistent Reminder Engine Listener
   useEffect(() => {
@@ -1486,8 +677,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
-    // 2. Real-time multi-device cloud broadcast
-    broadcastSyncAction(currentSpace.id, 'TASK_CREATE', newTask);
 
     // 3. Background SQLite database persistence
     try {
@@ -1557,25 +746,16 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       proof: proofObj
     };
 
-    // Broadcast in real-time to all connected devices (phone, laptop, tablet)
-    broadcastSyncAction(currentSpace.id, 'TASK_TOGGLE', {
-      taskId,
-      status: nextStatus,
-      completedAt: nextStatus === 'COMPLETED' ? now : undefined,
-      updatedAt: now,
-      proof: proofObj,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      task: updatedTaskItem
-    });
 
     // Immediate DB synchronization
     fetch('/api/tasks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'TOGGLE',
+        action: 'SET_STATUS',
+        status: nextStatus,
         taskId,
+        task: updatedTaskItem,
         userId: currentUser.id,
         userName: currentUser.name,
         proofImg
@@ -1601,12 +781,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
-    broadcastSyncAction(currentSpace.id, 'TASK_SNOOZE', {
-      taskId,
-      dueDate: newDate,
-      dueTime: newTime,
-      updatedAt: now
-    });
 
     fetch('/api/tasks', {
       method: 'PUT',
@@ -1630,12 +804,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
-    broadcastSyncAction(currentSpace.id, 'TASK_RESCHEDULE', {
-      taskId,
-      dueDate: newDate,
-      dueTime: finalTime,
-      updatedAt: now
-    });
 
     fetch('/api/tasks', {
       method: 'PUT',
@@ -1666,10 +834,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         return updated;
       });
 
-      broadcastSyncAction(currentSpace.id, 'TASK_DELETE', {
-        taskId,
-        deletedAt: now
-      });
 
       fetch(`/api/tasks?id=${taskId}`, { method: 'DELETE' }).catch(() => {});
     }
@@ -1691,10 +855,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         return updated;
       });
 
-      broadcastSyncAction(currentSpace.id, 'TASK_RESTORE', {
-        taskId,
-        updatedAt: now
-      });
 
       fetch('/api/tasks', {
         method: 'PUT',
@@ -1757,22 +917,16 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
     });
-
-    broadcastSyncAction(currentSpace.id, 'TASK_PROOF_DELETE', {
-      taskId,
-      updatedAt: now
-    });
   };
 
   const replaceTaskProof = (taskId: string, newUrl: string) => {
     const now = new Date().toISOString();
-    let newProofObj: any = null;
 
     setTasks(prev => {
       const updated = prev.map(t => {
         if (t.id === taskId) {
           const aiVerification = AIService.verifyPhotoProof(t.category, t.title, newUrl);
-          newProofObj = {
+          const newProofObj = {
             id: generateId('proof'),
             taskId,
             imageUrl: newUrl,
@@ -1792,19 +946,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
     });
-
-    if (newProofObj) {
-      broadcastSyncAction(currentSpace.id, 'TASK_PROOF_REPLACE', {
-        taskId,
-        proof: newProofObj,
-        updatedAt: now
-      });
-    }
   };
 
   const toggleTaskSubtask = (taskId: string, subtaskId: string) => {
     const now = new Date().toISOString();
-    let completedState = false;
 
     setTasks(prev => {
       const updated = prev.map(t => {
@@ -1814,8 +959,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             updatedAt: now,
             subtasks: t.subtasks.map(s => {
               if (s.id === subtaskId) {
-                completedState = !s.completed;
-                return { ...s, completed: completedState };
+                return { ...s, completed: !s.completed };
               }
               return s;
             })
@@ -1826,18 +970,10 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TASKS, updated);
       return updated;
     });
-
-    broadcastSyncAction(currentSpace.id, 'TASK_SUBTASK_TOGGLE', {
-      taskId,
-      subtaskId,
-      completed: completedState,
-      updatedAt: now
-    });
   };
 
   const toggleHabit = (habitId: string) => {
     const today = new Date().toISOString().split('T')[0];
-    let syncData: any = null;
     setHabits(prev => {
       const updated = prev.map(h => {
         if (h.id === habitId) {
@@ -1852,7 +988,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
             newStreak += 1;
           }
           const bestStreak = Math.max(newStreak, h.bestStreak);
-          syncData = { habitId, currentStreak: newStreak, bestStreak, logs: newLogs };
           return {
             ...h,
             currentStreak: newStreak,
@@ -1865,9 +1000,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
       return updated;
     });
-    if (syncData) {
-      broadcastSyncAction(currentSpace.id, 'HABIT_TOGGLE', syncData);
-    }
   };
 
   const addHabit = (title: string, category: string, frequency: Habit['frequency']) => {
@@ -1890,14 +1022,12 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.HABITS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'HABIT_ADD', newHabit);
   };
 
   const addWater = (amountMl: number) => {
     setWaterIntake(prev => {
       const total = prev + amountMl;
       setWebStorage(WEBSTORAGE_KEYS.WATER, total);
-      broadcastSyncAction(currentSpace.id, 'WELLNESS_WATER', { total });
       return total;
     });
   };
@@ -1919,7 +1049,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.SLEEP, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'WELLNESS_SLEEP', newLog);
   };
 
   const addMeal = (mealData: Omit<MealItem, 'id' | 'spaceId' | 'userId' | 'date'>) => {
@@ -1935,7 +1064,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.MEALS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'WELLNESS_MEAL', newMeal);
   };
 
   const addWorkout = (workoutData: Omit<WorkoutLog, 'id' | 'spaceId' | 'userId' | 'date'>) => {
@@ -1951,7 +1079,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.WORKOUTS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'WELLNESS_WORKOUT', newWorkout);
   };
 
   const logDailyCheckin = (checkinData: Omit<DailyCheckin, 'id' | 'spaceId' | 'userId' | 'date' | 'createdAt'>) => {
@@ -1969,7 +1096,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.CHECKINS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'WELLNESS_CHECKIN', newCheckin);
   };
 
   const logCycle = (cycleData: Omit<CycleLog, 'id' | 'userId'>) => {
@@ -1998,7 +1124,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.STUDY_SUBJECTS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'STUDY_SUBJECT_ADD', newSubj);
   };
 
   const updateTopicMastery = (subjectId: string, topicId: string, delta: number) => {
@@ -2040,7 +1165,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.STUDY_SESSIONS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'STUDY_SESSION_ADD', newSession);
   };
 
   const addExam = (examData: Omit<Exam, 'id' | 'spaceId' | 'userId'>) => {
@@ -2055,7 +1179,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'EXAM_ADD', newExam);
   };
 
   const deleteExam = (id: string) => {
@@ -2064,7 +1187,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.EXAMS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'EXAM_DELETE', { id });
   };
 
   const toggleMealCheck = (slot: MealSlot, dishName?: string, forUserId?: string) => {
@@ -2108,8 +1230,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.DAILY_MEAL_CHECKS, updated);
       return updated;
     });
-
-    broadcastSyncAction(currentSpace.id, 'MEAL_CHECK_TOGGLE', updatedCheck);
   };
 
   const saveDailyNote = (noteText: string, moodEmoji: string = '💌') => {
@@ -2132,7 +1252,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
     soundFx.playPartnerNoteChime();
-    broadcastSyncAction(currentSpace.id, 'DAILY_NOTE_SAVE', newNote);
   };
 
   const addClassScheduleItem = (itemData: Omit<ClassScheduleItem, 'id'>) => {
@@ -2145,7 +1264,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.CLASS_SCHEDULE, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'CLASS_SCHEDULE_ADD', newItem);
   };
 
   // Project Actions
@@ -2167,7 +1285,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'PROJECT_ADD', newProj);
   };
 
   const toggleProjectMilestone = (projectId: string, milestoneId: string) => {
@@ -2184,7 +1301,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.PROJECTS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'PROJECT_MILESTONE_TOGGLE', { projectId, milestoneId });
   };
 
   const addMilestoneToProject = (projectId: string, title: string, taskTitles: string[]) => {
@@ -2225,7 +1341,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'EXPENSE_ADD', newExp);
   };
 
   const toggleSettleExpense = (id: string) => {
@@ -2234,7 +1349,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.SHARED_EXPENSES, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'EXPENSE_SETTLE', { id });
   };
 
   // Trips & Packing
@@ -2252,7 +1366,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'TRIP_PACKING', { tripId, itemId });
   };
 
   const addTrip = (tripData: Omit<TripItem, 'id' | 'spaceId'>) => {
@@ -2266,7 +1379,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.TRIPS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'TRIP_ADD', newTrip);
   };
 
   // Subscriptions & Documents
@@ -2330,7 +1442,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'GOAL_ADD', newGoal);
   };
 
   const toggleMilestone = (goalId: string, milestoneId: string) => {
@@ -2347,7 +1458,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.GOALS, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'GOAL_MILESTONE_TOGGLE', { goalId, milestoneId });
   };
 
   const sendEncouragement = (message: string, emoji: string) => {
@@ -2365,7 +1475,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     };
     setEncouragements(prev => [newEnc, ...prev]);
     soundFx.playEncouragementChime();
-    broadcastSyncAction(currentSpace.id, 'ENCOURAGEMENT_SEND', newEnc);
   };
 
   const requestHelp = (category: HelpRequest['category'], message?: string) => {
@@ -2384,7 +1493,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.MEMORIES, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'MEMORY_ADD', newMem);
   };
 
   const addLittleThing = (thingData: Omit<LittleThing, 'id' | 'spaceId' | 'userId'>) => {
@@ -2403,7 +1511,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'SHOPPING_TOGGLE', { id });
   };
 
   const addShoppingItem = (title: string, category: string) => {
@@ -2422,7 +1529,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.SHOPPING, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'SHOPPING_ADD', newItem);
   };
 
   const addLifeAdminItem = (itemData: Omit<LifeAdminItem, 'id' | 'spaceId' | 'userId' | 'status'>) => {
@@ -2438,7 +1544,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'ADMIN_ADD', newItem);
   };
 
   const toggleLifeAdminStatus = (id: string) => {
@@ -2450,7 +1555,6 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       setWebStorage(WEBSTORAGE_KEYS.LIFE_ADMIN, updated);
       return updated;
     });
-    broadcastSyncAction(currentSpace.id, 'ADMIN_TOGGLE', { id });
   };
 
   const addKnowledgeItem = (title: string, category: KnowledgeItem['category'], content: string, tags: string[]) => {
@@ -2577,30 +1681,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
         cloudSyncStatus,
         dailyMealChecks,
         toggleMealCheck,
-        triggerSync: () => {
-          broadcastSyncAction(currentSpace.id, 'SYNC_REQUEST', { requestFrom: currentUser.id });
-          broadcastSyncAction(currentSpace.id, 'FULL_SYNC', {
-            tasks: tasksRef.current,
-            habits: habitsRef.current,
-            projects: projectsRef.current,
-            goals: goalsRef.current,
-            shoppingItems: shoppingRef.current,
-            lifeAdminItems: lifeAdminRef.current,
-            waterIntake: waterRef.current,
-            sleepLogs: sleepRef.current,
-            meals: mealsRef.current,
-            workouts: workoutsRef.current,
-            memories: memoriesRef.current,
-            checkins: checkinsRef.current,
-            sharedExpenses: expensesRef.current,
-            trips: tripsRef.current,
-            studySubjects: subjectsRef.current,
-            exams: examsRef.current,
-            studySessions: sessionsRef.current,
-            dailyPartnerNotes: dailyNotesRef.current,
-            dailyMealChecks: mealChecksRef.current
-          });
-        }
+        triggerSync: () => resyncRef.current()
       }}
     >
       {children}

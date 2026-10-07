@@ -76,8 +76,15 @@ async function handleUpdate(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'MISSING_TASK_ID' }, { status: 400 });
     }
 
-    if (action === 'TOGGLE' || action === 'TOGGLE_COMPLETE') {
-      const res = TaskDb.toggle(taskId, user.id, user.name, proofImg);
+    if (action === 'SET_STATUS' || action === 'TOGGLE' || action === 'TOGGLE_COMPLETE') {
+      const status = action === 'SET_STATUS' ? body.status : undefined;
+      let res = TaskDb.toggle(taskId, user.id, user.name, proofImg, status);
+      // Task was created offline / its POST failed: create it now, then apply the status
+      if (!res.success && res.error === 'TASK_NOT_FOUND' && body.task?.title) {
+        const defaultSpace = AuthDb.firstSpaceForUser(user.id);
+        TaskDb.create({ ...body.task, id: taskId, status: 'TODO', creatorId: body.task.creatorId || user.id, spaceId: body.task.spaceId || defaultSpace?.id || 'space_lifeos_demo' });
+        res = TaskDb.toggle(taskId, user.id, user.name, proofImg, status);
+      }
       if (!res.success && res.error === 'PROOF_REQUIRED') {
         return NextResponse.json({ success: false, error: 'PROOF_REQUIRED' }, { status: 400 });
       }

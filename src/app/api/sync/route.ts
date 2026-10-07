@@ -1,124 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SyncEventDb, seedInitialDataIfEmpty } from '@/lib/db';
+import { SyncStateDb } from '@/lib/db';
 
-type SyncSubscriber = (event: any) => void;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// In-memory real-time SSE pub-sub subscribers per spaceId
-const subscribersBySpace = new Map<string, Set<SyncSubscriber>>();
+type Listener = (seq: number) => void;
 
-function addSubscriber(spaceId: string, sub: SyncSubscriber) {
-  let set = subscribersBySpace.get(spaceId);
-  if (!set) {
-    set = new Set();
-    subscribersBySpace.set(spaceId, set);
-  }
-  set.add(sub);
-  return () => {
-    set?.delete(sub);
-    if (set && set.size === 0) {
-      subscribersBySpace.delete(spaceId);
-    }
-  };
+// Live SSE listeners per space. Kept on globalThis so every route module instance shares it.
+// ponytail: in-memory fan-out, needs ONE server process; use Redis/Postgres LISTEN to scale out.
+const g = globalThis as unknown as { __lifeosSyncListeners?: Map<string, Set<Listener>> };
+const listeners: Map<string, Set<Listener>> = (g.__lifeosSyncListeners ??= new Map());
+
+function notify(spaceId: string, seq: number) {
+  listeners.get(spaceId)?.forEach((fn) => {
+    try { fn(seq); } catch {}
+  });
 }
 
-function notifySubscribers(spaceId: string, event: any) {
-  const set = subscribersBySpace.get(spaceId);
-  if (set) {
-    set.forEach((sub) => {
-      try {
-        sub(event);
-      } catch {}
-    });
-  }
-}
-
+// Push changed items: { spaceId, items: [{ collection, id, data?, deleted? }] }
 export async function POST(req: NextRequest) {
   try {
-    seedInitialDataIfEmpty();
     const body = await req.json();
     const spaceId = body.spaceId || 'space_lifeos_demo';
-    const action = body.action;
-    const data = body.data;
-    const senderDeviceId = body.senderDeviceId || 'unknown_device';
-
-    if (!action) {
-      return NextResponse.json({ success: false, error: 'MISSING_ACTION' }, { status: 400 });
+    if (!Array.isArray(body.items)) {
+      return NextResponse.json({ success: false, error: 'MISSING_ITEMS' }, { status: 400 });
     }
-
-    const recorded = SyncEventDb.record(spaceId, senderDeviceId, action, data);
-
-    // Notify connected SSE clients immediately in memory
-    notifySubscribers(spaceId, recorded);
-
-    return NextResponse.json({ success: true, event: recorded }, { status: 200 });
+    const seq = SyncStateDb.upsert(spaceId, body.items);
+    notify(spaceId, seq);
+    return NextResponse.json({ success: true, seq });
   } catch (err: any) {
     console.error('[Sync API] POST error:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
 
+// ?since=N -> items changed after seq N.  ?stream=1 -> SSE "changed" pings.
 export async function GET(req: NextRequest) {
-  try {
-    seedInitialDataIfEmpty();
-    const { searchParams } = new URL(req.url);
-    const spaceId = searchParams.get('spaceId') || 'space_lifeos_demo';
-    const since = searchParams.get('since') || undefined;
-    const isStream = searchParams.get('stream') === '1' || req.headers.get('accept') === 'text/event-stream';
+  const { searchParams } = new URL(req.url);
+  const spaceId = searchParams.get('spaceId') || 'space_lifeos_demo';
 
-    // 1. If Client requests Live Real-Time SSE Stream
-    if (isStream) {
-      const encoder = new TextEncoder();
-      let unsubscribe: (() => void) | null = null;
-      let pingInterval: NodeJS.Timeout | null = null;
-
-      const stream = new ReadableStream({
-        start(controller) {
-          // Send initial connection event
-          controller.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ spaceId, time: new Date().toISOString() })}\n\n`));
-
-          // Catch-up: send recent events immediately on stream open
-          try {
-            const recentEvents = SyncEventDb.listSince(spaceId, since);
-            for (const ev of recentEvents) {
-              controller.enqueue(encoder.encode(`event: sync\ndata: ${JSON.stringify(ev)}\n\n`));
-            }
-          } catch {}
-
-          // Subscribe to live events
-          unsubscribe = addSubscriber(spaceId, (ev) => {
-            try {
-              controller.enqueue(encoder.encode(`event: sync\ndata: ${JSON.stringify(ev)}\n\n`));
-            } catch {}
-          });
-
-          // Keep alive heartbeat ping every 15s to prevent mobile timeouts
-          pingInterval = setInterval(() => {
-            try {
-              controller.enqueue(encoder.encode(`: ping\n\n`));
-            } catch {}
-          }, 15000);
-        },
-        cancel() {
-          if (unsubscribe) unsubscribe();
-          if (pingInterval) clearInterval(pingInterval);
-        }
+  if (searchParams.get('stream') !== '1') {
+    try {
+      const since = Number(searchParams.get('since')) || 0;
+      return NextResponse.json({ success: true, ...SyncStateDb.since(spaceId, since) }, {
+        headers: { 'Cache-Control': 'no-store' }
       });
-
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache, no-transform',
-          'Connection': 'keep-alive',
-          'X-Accel-Buffering': 'no'
-        }
-      });
+    } catch (err: any) {
+      console.error('[Sync API] GET error:', err);
+      return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }
-
-    // 2. Standard Poll: return events since timestamp
-    const events = SyncEventDb.listSince(spaceId, since);
-    return NextResponse.json({ success: true, events });
-  } catch (err: any) {
-    console.error('[Sync API] GET error:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
+
+  const encoder = new TextEncoder();
+  let cleanup = () => {};
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = (chunk: string) => {
+        try { controller.enqueue(encoder.encode(chunk)); } catch { cleanup(); }
+      };
+      const listener: Listener = (seq) => send(`event: changed\ndata: ${seq}\n\n`);
+      let set = listeners.get(spaceId);
+      if (!set) listeners.set(spaceId, (set = new Set()));
+      set.add(listener);
+      const ping = setInterval(() => send(`: ping\n\n`), 15000);
+
+      cleanup = () => {
+        clearInterval(ping);
+        set!.delete(listener);
+        if (set!.size === 0) listeners.delete(spaceId);
+      };
+      req.signal.addEventListener('abort', () => {
+        cleanup();
+        try { controller.close(); } catch {}
+      });
+      send(`retry: 2000\nevent: changed\ndata: 0\n\n`);
+    },
+    cancel() {
+      cleanup();
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    }
+  });
 }
