@@ -28,16 +28,41 @@ export function hashString(str: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-export async function pushItems(spaceId: string, items: SyncItem[]): Promise<boolean> {
+// Inter-tab / local broadcast channel for 0ms cross-tab real-time sync
+const SYNC_CHANNEL_NAME = 'lifeos_sync_broadcast_v1';
+let globalBroadcastChannel: BroadcastChannel | null = null;
+
+function getBroadcastChannel(): BroadcastChannel | null {
+  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return null;
+  if (!globalBroadcastChannel) {
+    try {
+      globalBroadcastChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    } catch {
+      globalBroadcastChannel = null;
+    }
+  }
+  return globalBroadcastChannel;
+}
+
+export function broadcastSyncPing(spaceId: string) {
+  try {
+    const bc = getBroadcastChannel();
+    bc?.postMessage({ type: 'sync_ping', spaceId, timestamp: Date.now() });
+  } catch {}
+}
+
+export async function pushItems(spaceId: string, items: SyncItem[]): Promise<{ ok: boolean; seq?: number }> {
   try {
     const res = await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ spaceId, items })
     });
-    return res.ok;
+    if (!res.ok) return { ok: false };
+    const json = await res.json().catch(() => ({}));
+    return { ok: Boolean(json.success), seq: typeof json.seq === 'number' ? json.seq : undefined };
   } catch {
-    return false;
+    return { ok: false };
   }
 }
 
@@ -46,7 +71,7 @@ export async function pullItems(spaceId: string, since: number): Promise<{ items
     const res = await fetch(`/api/sync?spaceId=${encodeURIComponent(spaceId)}&since=${since}`, { cache: 'no-store' });
     if (!res.ok) return null;
     const json = await res.json();
-    return json.success ? { items: json.items || [], seq: json.seq || since } : null;
+    return json.success ? { items: json.items || [], seq: json.seq ?? since } : null;
   } catch {
     return null;
   }
@@ -54,7 +79,7 @@ export async function pullItems(spaceId: string, since: number): Promise<{ items
 
 /**
  * Keep an SSE connection open and call onChange() whenever the server has new data
- * (and on every (re)connect, wake-from-sleep, focus, or network return).
+ * (and on every (re)connect, wake-from-sleep, focus, network return, or inter-tab broadcast).
  */
 export function subscribeToChanges(
   spaceId: string,
@@ -66,33 +91,61 @@ export function subscribeToChanges(
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | null = null;
 
+  const handlePing = () => {
+    if (closed) return;
+    onChange();
+  };
+
   const connect = () => {
     if (closed) return;
     if (retry) { clearTimeout(retry); retry = null; }
     es?.close();
     onStatus('connecting');
-    es = new EventSource(`/api/sync?spaceId=${encodeURIComponent(spaceId)}&stream=1`);
-    es.onopen = () => onStatus('connected');
-    es.addEventListener('changed', () => onChange());
-    es.onerror = () => {
-      es?.close();
-      es = null;
-      if (closed) return;
+
+    try {
+      es = new EventSource(`/api/sync?spaceId=${encodeURIComponent(spaceId)}&stream=1`);
+      es.onopen = () => {
+        if (closed) return;
+        onStatus('connected');
+        handlePing();
+      };
+      es.addEventListener('changed', handlePing);
+      es.onmessage = handlePing;
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (closed) return;
+        onStatus('offline');
+        retry = setTimeout(connect, 3000);
+      };
+    } catch {
       onStatus('offline');
       retry = setTimeout(connect, 3000);
-    };
+    }
   };
 
   // Phones kill SSE silently while the screen is off: reconnect + catch up when back.
   const wake = () => {
     if (document.visibilityState !== 'visible') return;
     if (!es || es.readyState === EventSource.CLOSED) connect();
-    onChange();
+    handlePing();
   };
 
+  // Listen to other browser tabs on the same computer/browser
+  const bc = getBroadcastChannel();
+  const onBcMessage = (ev: MessageEvent) => {
+    if (ev.data?.spaceId === spaceId) {
+      handlePing();
+    }
+  };
+  bc?.addEventListener('message', onBcMessage);
+
   connect();
-  // Safety net in case a ping is lost on a flaky network.
-  const poll = setInterval(onChange, 15000);
+  // Trigger initial catch-up immediately
+  handlePing();
+
+  // Safety net in case a ping is lost on a flaky network
+  const poll = setInterval(handlePing, 10000);
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('focus', wake);
   window.addEventListener('online', wake);
@@ -101,6 +154,7 @@ export function subscribeToChanges(
     closed = true;
     clearInterval(poll);
     if (retry) clearTimeout(retry);
+    bc?.removeEventListener('message', onBcMessage);
     document.removeEventListener('visibilitychange', wake);
     window.removeEventListener('focus', wake);
     window.removeEventListener('online', wake);

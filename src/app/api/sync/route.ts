@@ -58,11 +58,17 @@ export async function GET(req: NextRequest) {
       const send = (chunk: string) => {
         try { controller.enqueue(encoder.encode(chunk)); } catch { cleanup(); }
       };
-      const listener: Listener = (seq) => send(`event: changed\ndata: ${seq}\n\n`);
+      const listener: Listener = (seq) => {
+        send(`event: changed\ndata: ${seq}\n\n`);
+        send(`data: {"type":"changed","seq":${seq}}\n\n`);
+      };
       let set = listeners.get(spaceId);
       if (!set) listeners.set(spaceId, (set = new Set()));
       set.add(listener);
-      const ping = setInterval(() => send(`: ping\n\n`), 15000);
+      const ping = setInterval(() => {
+        send(`: ping\n\n`);
+        send(`data: {"type":"ping"}\n\n`);
+      }, 15000);
 
       cleanup = () => {
         clearInterval(ping);
@@ -74,6 +80,7 @@ export async function GET(req: NextRequest) {
         try { controller.close(); } catch {}
       });
       send(`retry: 2000\nevent: changed\ndata: 0\n\n`);
+      send(`data: {"type":"connected","seq":0}\n\n`);
     },
     cancel() {
       cleanup();

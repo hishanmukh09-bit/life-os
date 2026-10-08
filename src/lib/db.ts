@@ -1,32 +1,66 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
-function getDbDir(): string {
-  if (process.env.DATABASE_DIR) return process.env.DATABASE_DIR;
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return path.join('/tmp', 'data');
+function isDirectoryWritable(dirPath: string): boolean {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true, mode: 0o777 });
+    }
+    const probe = path.join(dirPath, `.lifeos_probe_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
   }
-  return path.join(process.cwd(), 'data');
 }
 
-const DB_DIR = getDbDir();
-const DB_PATH = path.join(DB_DIR, 'lifeos.db');
+function resolveDbPath(): string {
+  const candidates: string[] = [];
 
-try {
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
+  if (process.env.DATABASE_DIR) candidates.push(process.env.DATABASE_DIR);
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH) candidates.push(process.env.RAILWAY_VOLUME_MOUNT_PATH);
+
+  // Standard persistent paths
+  candidates.push('/app/data');
+  candidates.push('/data');
+  candidates.push(path.join(process.cwd(), 'data'));
+
+  // Universal container / Linux temp directories (always writable)
+  candidates.push(path.join(os.tmpdir(), 'lifeos_data'));
+  candidates.push('/tmp/lifeos_data');
+  candidates.push(os.tmpdir());
+  candidates.push('/tmp');
+
+  for (const dir of candidates) {
+    if (isDirectoryWritable(dir)) {
+      return path.join(dir, 'lifeos.db');
+    }
   }
-} catch (e) {
-  console.warn('Could not create DB_DIR, using fallback:', e);
+
+  return path.join(os.tmpdir(), 'lifeos.db');
 }
 
 let _db: DatabaseSync | null = null;
 
 export function getDb(): DatabaseSync {
   if (!_db) {
-    _db = new DatabaseSync(DB_PATH);
-    _db.exec('PRAGMA journal_mode = WAL;');
+    const dbPath = resolveDbPath();
+    try {
+      _db = new DatabaseSync(dbPath);
+    } catch (err: any) {
+      console.warn('[SQLite] Primary path failed, falling back to temp dir:', err);
+      const fallbackPath = path.join(os.tmpdir(), `lifeos_${Date.now()}.db`);
+      _db = new DatabaseSync(fallbackPath);
+    }
+
+    try {
+      _db.exec('PRAGMA journal_mode = WAL;');
+    } catch {
+      _db.exec('PRAGMA journal_mode = DELETE;');
+    }
     _db.exec('PRAGMA foreign_keys = ON;');
     initSchema(_db);
   }
@@ -862,13 +896,23 @@ export const SyncStateDb = {
       SELECT collection, item_id, data_json, deleted, seq FROM sync_items
       WHERE space_id = ? AND seq > ? ORDER BY seq ASC
     `).all(spaceId, sinceSeq) as any[];
-    const items: SyncItem[] = rows.map(r => ({
-      collection: r.collection,
-      id: r.item_id,
-      data: r.deleted ? undefined : JSON.parse(r.data_json),
-      deleted: Boolean(r.deleted),
-      seq: r.seq
-    }));
+    const items: SyncItem[] = rows.map(r => {
+      let data = undefined;
+      if (!r.deleted && r.data_json) {
+        try {
+          data = JSON.parse(r.data_json);
+        } catch {
+          data = undefined;
+        }
+      }
+      return {
+        collection: r.collection,
+        id: r.item_id,
+        data,
+        deleted: Boolean(r.deleted),
+        seq: r.seq
+      };
+    });
     const seq = rows.length ? rows[rows.length - 1].seq : sinceSeq;
     return { items, seq };
   }

@@ -72,7 +72,7 @@ import { generateId } from './utils';
 import { AIService } from './ai-service';
 import { reminderEngine } from './reminder-engine';
 import { WEBSTORAGE_KEYS, getWebStorage, setWebStorage } from './webstorage';
-import { hashString, pullItems, pushItems, subscribeToChanges, SyncItem } from './cloud-sync';
+import { broadcastSyncPing, hashString, pullItems, pushItems, subscribeToChanges, SyncItem } from './cloud-sync';
 
 const SYNC_STATE_KEY = 'lifeos_sync_state_v1';
 
@@ -487,7 +487,11 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
     };
 
     const flush = async () => {
-      if (closed || !st.ready) return;
+      if (closed) return;
+      if (!st.ready) {
+        flushAgain = true;
+        return;
+      }
       if (flushing) { flushAgain = true; return; }
       const items: SyncItem[] = [];
       const confirm: [string, string, string | null][] = [];
@@ -504,17 +508,21 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       }
       if (items.length === 0) return;
       flushing = true;
-      const ok = await pushItems(spaceId, items);
+      const pushRes = await pushItems(spaceId, items);
       flushing = false;
       if (closed) return;
-      if (ok) {
+      if (pushRes.ok) {
+        if (typeof pushRes.seq === 'number' && pushRes.seq > st.seq) {
+          st.seq = pushRes.seq;
+        }
         for (const [coll, id, h] of confirm) {
           if (h === null) delete st.snap[coll][id];
           else st.snap[coll][id] = h;
         }
         save();
+        broadcastSyncPing(spaceId);
       }
-      // failed pushes stay "unsent" and retry on the next pull (every <=15s, on reconnect/wake)
+      // failed pushes stay "unsent" and retry on the next pull (every <=10s, on reconnect/wake)
       if (flushAgain) { flushAgain = false; flush(); }
     };
 
@@ -600,7 +608,7 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
       if (closed) return;
       if (res) {
         apply(res.items);
-        st.seq = res.seq;
+        st.seq = Math.max(st.seq, res.seq);
         st.ready = true;
         st.firstRun = false;
         save();
@@ -611,6 +619,8 @@ export function LifeOSProvider({ children }: { children: React.ReactNode }) {
 
     flushRef.current = flush;
     resyncRef.current = () => { st.seq = 0; pull(); };
+    // Immediately pull initial state to catch up and set st.ready
+    pull();
     const unsub = subscribeToChanges(spaceId, pull, setCloudSyncStatus);
     return () => {
       closed = true;

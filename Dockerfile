@@ -1,5 +1,5 @@
 # Multi-stage production build for LIFE OS
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -33,8 +33,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Create persistent storage directories
-RUN mkdir -p /app/data /app/public/uploads && \
-    chown -R nextjs:nodejs /app/data /app/public/uploads
+RUN mkdir -p /app/data /data /tmp/lifeos_data /app/public/uploads && \
+    chmod -R 777 /app/data /data /tmp/lifeos_data /app/public/uploads && \
+    chown -R nextjs:nodejs /app/data /data /tmp/lifeos_data /app/public/uploads
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
